@@ -18,7 +18,6 @@
 
 # TypeScript
 *.tsbuildinfo
-next-env.d.ts
 
 # OS/editor files
 .DS_Store

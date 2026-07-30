@@ -100,8 +100,8 @@ Telegram принимает только HTTPS URL. Для проверки Mini
 
 1. Загрузите репозиторий в GitHub/GitLab/Bitbucket.
 2. В Vercel нажмите **Add New → Project** и импортируйте репозиторий.
-3. Если репозиторий содержит другие каталоги, задайте **Root Directory**:
-   `selan-forum`.
+3. Оставьте **Root Directory** пустым (корень репозитория): `package.json` и
+   каталог `app/` уже находятся на верхнем уровне.
 4. Добавьте все пять переменных из `.env.example` в **Settings → Environment
    Variables** для Production (и Preview при необходимости).
 5. Нажмите **Deploy** и скопируйте итоговый HTTPS URL.
