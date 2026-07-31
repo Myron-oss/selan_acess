@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const authorization = await requireEmployee(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
     const { employee } = authorization;
@@ -51,12 +52,15 @@ export async function GET(request: NextRequest) {
       )
     }));
 
-    return NextResponse.json({ channels });
+    return NextResponse.json(
+      { channels },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load channels", error);
     return NextResponse.json(
       { error: "Не удалось загрузить ветки." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

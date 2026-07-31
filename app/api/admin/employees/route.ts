@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const authorization = await requireAdmin(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
 
@@ -49,16 +50,19 @@ export async function GET(request: NextRequest) {
       )
     );
 
-    return NextResponse.json({
-      employees,
-      roles,
-      current_user_tg_id: authorization.employee.tg_id
-    });
+    return NextResponse.json(
+      {
+        employees,
+        roles,
+        current_user_tg_id: authorization.employee.tg_id
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load employees", error);
     return NextResponse.json(
       { error: "Не удалось загрузить сотрудников." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

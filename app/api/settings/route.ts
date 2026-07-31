@@ -14,22 +14,26 @@ export async function GET(request: NextRequest) {
   try {
     const authorization = await requireEmployee(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
     const { employee } = authorization;
 
-    return NextResponse.json({
-      settings: {
-        theme_preference: employee.theme_preference,
-        accent_color: employee.accent_color,
-        avatar_url: employee.avatar_url
-      }
-    });
+    return NextResponse.json(
+      {
+        settings: {
+          theme_preference: employee.theme_preference,
+          accent_color: employee.accent_color,
+          avatar_url: employee.avatar_url
+        }
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load settings", error);
     return NextResponse.json(
       { error: "Не удалось загрузить настройки." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

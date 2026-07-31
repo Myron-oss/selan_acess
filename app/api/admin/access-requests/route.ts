@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const authorization = await requireAdmin(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
 
@@ -36,12 +37,15 @@ export async function GET(request: NextRequest) {
       mapAccessRequest(row as Record<string, unknown>)
     );
 
-    return NextResponse.json({ requests, count: requests.length });
+    return NextResponse.json(
+      { requests, count: requests.length },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load access requests", error);
     return NextResponse.json(
       { error: "Не удалось загрузить заявки на доступ." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

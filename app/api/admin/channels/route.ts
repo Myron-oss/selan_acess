@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const authorization = await requireAdmin(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
 
@@ -25,16 +26,19 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({
-      channels: (data ?? []).map((row) =>
-        mapAdminChannel(row as Record<string, unknown>)
-      )
-    });
+    return NextResponse.json(
+      {
+        channels: (data ?? []).map((row) =>
+          mapAdminChannel(row as Record<string, unknown>)
+        )
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load admin channels", error);
     return NextResponse.json(
       { error: "Не удалось загрузить ветки." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

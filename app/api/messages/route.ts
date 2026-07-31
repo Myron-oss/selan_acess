@@ -34,13 +34,14 @@ export async function GET(request: NextRequest) {
   if (!isUuid(channelId)) {
     return NextResponse.json(
       { error: "Некорректный идентификатор ветки." },
-      { status: 400 }
+      { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
 
   try {
     const authorization = await requireEmployee(request);
     if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
     const { employee } = authorization;
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
     if (!(await canAccessChannel(channelId, employee.role_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -88,19 +89,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      messages: (data ?? []).map((message) =>
-        mapMessage(
-          message as Record<string, unknown>,
-          avatarBySender.get(String(message.sender_tg_id)) ?? null
+    return NextResponse.json(
+      {
+        messages: (data ?? []).map((message) =>
+          mapMessage(
+            message as Record<string, unknown>,
+            avatarBySender.get(String(message.sender_tg_id)) ?? null
+          )
         )
-      )
-    });
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Failed to load messages", error);
     return NextResponse.json(
       { error: "Не удалось загрузить сообщения." },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
