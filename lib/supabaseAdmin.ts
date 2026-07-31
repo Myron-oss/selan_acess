@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { mapEmployee, mapRole } from "@/lib/entityMappers";
 import type { AuthenticatedEmployee } from "@/lib/types";
 
 let adminClient: SupabaseClient | undefined;
@@ -34,7 +35,9 @@ export async function getEmployeeContext(
   const supabase = getSupabaseAdmin();
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,tg_id,full_name,role_id")
+    .select(
+      "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,role:roles!inner(id,name,is_admin)"
+    )
     .eq("tg_id", String(tgId))
     .maybeSingle();
 
@@ -46,25 +49,18 @@ export async function getEmployeeContext(
     return null;
   }
 
-  const { data: role, error: roleError } = await supabase
-    .from("roles")
-    .select("id,name,is_admin")
-    .eq("id", employee.role_id)
-    .single();
-
-  if (roleError) {
-    throw roleError;
+  const rawRole = Array.isArray(employee.role)
+    ? employee.role[0]
+    : employee.role;
+  if (!rawRole || typeof rawRole !== "object") {
+    throw new Error("Employee role relation is missing");
   }
 
-  return {
-    id: employee.id as string,
-    tg_id: Number(employee.tg_id),
-    full_name: employee.full_name as string,
-    role_id: employee.role_id as string,
-    role: {
-      id: role.id as string,
-      name: role.name as string,
-      is_admin: role.is_admin as boolean
-    }
-  };
+  const role = mapRole(rawRole as Record<string, unknown>);
+  const mappedEmployee = mapEmployee(
+    employee as Record<string, unknown>,
+    role
+  );
+
+  return { ...mappedEmployee, role } satisfies AuthenticatedEmployee;
 }

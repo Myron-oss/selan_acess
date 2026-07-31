@@ -5,6 +5,25 @@
 :root {
   color-scheme: light;
   --app-height: 100dvh;
+  --accent: #2a7de1;
+  --accent-soft: #e7f1ff;
+  --accent-dark-soft: #17375f;
+  --messenger-bg: #edf2f7;
+  --surface: #ffffff;
+  --surface-muted: #f7f9fb;
+  --border: #dfe6ee;
+  --text-primary: #17212b;
+  --text-secondary: #667784;
+}
+
+.dark {
+  color-scheme: dark;
+  --messenger-bg: #0d151d;
+  --surface: #17212b;
+  --surface-muted: #111b24;
+  --border: #263543;
+  --text-primary: #edf4f8;
+  --text-secondary: #91a3b0;
 }
 
 * {
@@ -15,8 +34,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: #f7faf8;
-  color: #17211b;
+  background: var(--messenger-bg);
+  color: var(--text-primary);
   overscroll-behavior: none;
 }
 
@@ -26,6 +45,9 @@ body {
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 button,
@@ -40,20 +62,52 @@ button,
   -webkit-tap-highlight-color: transparent;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 36%, transparent);
+}
+
 @layer components {
   .panel {
-    @apply rounded-2xl border border-slate-200 bg-white shadow-sm;
+    @apply rounded-2xl border shadow-sm;
+    border-color: var(--border);
+    background: var(--surface);
   }
 
   .field {
-    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100;
+    @apply w-full rounded-xl border px-3 py-2.5 text-base outline-none transition-colors placeholder:text-slate-400 focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60;
+    border-color: var(--border);
+    background: var(--surface-muted);
+    color: var(--text-primary);
+    --tw-ring-color: color-mix(in srgb, var(--accent) 28%, transparent);
   }
 
   .primary-button {
-    @apply inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 font-medium text-white outline-none hover:bg-brand-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center rounded-xl px-4 py-2.5 font-medium text-white outline-none transition-[filter,opacity] hover:brightness-95 focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    background: var(--accent);
+    --tw-ring-color: var(--accent);
+    --tw-ring-offset-color: var(--surface);
   }
 
   .secondary-button {
-    @apply inline-flex min-h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 outline-none hover:bg-slate-50 focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 font-medium outline-none transition-colors focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    --tw-ring-color: var(--accent);
+    --tw-ring-offset-color: var(--surface);
+  }
+
+  .muted-text {
+    color: var(--text-secondary);
   }
 }

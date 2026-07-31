@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getEmployeeContext, getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionUserId } from "@/lib/telegramAuth";
-import type { Employee, Role } from "@/lib/types";
+import { requireAdmin } from "@/lib/apiAuth";
+import { mapEmployee, mapRole } from "@/lib/entityMappers";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Role } from "@/lib/types";
+import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface RouteContext {
   params: {
@@ -16,66 +15,21 @@ interface RouteContext {
   };
 }
 
-function parseTelegramId(value: unknown): number | null {
-  if (
-    typeof value === "string" &&
-    /^\d+$/.test(value) &&
-    Number.isSafeInteger(Number(value)) &&
-    Number(value) > 0
-  ) {
-    return Number(value);
+async function countAdministrators(): Promise<number> {
+  const { count, error } = await getSupabaseAdmin()
+    .from("employees")
+    .select("id,role:roles!inner(is_admin)", { count: "exact", head: true })
+    .eq("roles.is_admin", true);
+
+  if (error) {
+    throw error;
   }
 
-  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return value;
-  }
-
-  return null;
-}
-
-async function requireAdmin(request: NextRequest) {
-  const tgId = getSessionUserId(request);
-  if (!tgId) {
-    return NextResponse.json(
-      { error: "Требуется авторизация." },
-      { status: 401 }
-    );
-  }
-
-  const employee = await getEmployeeContext(tgId);
-  if (!employee) {
-    return NextResponse.json(
-      { error: "Доступ не предоставлен" },
-      { status: 403 }
-    );
-  }
-
-  if (!employee.role.is_admin) {
-    return NextResponse.json(
-      { error: "Доступ разрешён только администратору." },
-      { status: 403 }
-    );
-  }
-
-  return null;
-}
-
-function mapEmployee(
-  employee: Record<string, unknown>,
-  role?: Role
-): Employee {
-  return {
-    id: String(employee.id),
-    tg_id: Number(employee.tg_id),
-    full_name: String(employee.full_name),
-    role_id: String(employee.role_id),
-    created_at: String(employee.created_at),
-    role
-  };
+  return count ?? 0;
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  if (!UUID_PATTERN.test(params.id)) {
+  if (!isUuid(params.id)) {
     return NextResponse.json(
       { error: "Некорректный идентификатор сотрудника." },
       { status: 400 }
@@ -83,28 +37,43 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    const deniedResponse = await requireAdmin(request);
-    if (deniedResponse) {
-      return deniedResponse;
+    const authorization = await requireAdmin(request);
+    if ("response" in authorization) {
+      return authorization.response;
     }
 
+    const supabase = getSupabaseAdmin();
+    const { data: targetEmployee, error: targetError } = await supabase
+      .from("employees")
+      .select(
+        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,role:roles!inner(id,name,is_admin)"
+      )
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (targetError) {
+      throw targetError;
+    }
+    if (!targetEmployee) {
+      return NextResponse.json(
+        { error: "Сотрудник не найден." },
+        { status: 404 }
+      );
+    }
+
+    const rawOldRole = Array.isArray(targetEmployee.role)
+      ? targetEmployee.role[0]
+      : targetEmployee.role;
+    if (!rawOldRole || typeof rawOldRole !== "object") {
+      throw new Error("Employee role relation is missing");
+    }
+    const oldRole = mapRole(rawOldRole as Record<string, unknown>);
+
     const body = (await request.json()) as {
-      tg_id?: unknown;
       full_name?: unknown;
       role_id?: unknown;
     };
     const updates: Record<string, string> = {};
-
-    if (body.tg_id !== undefined) {
-      const tgId = parseTelegramId(body.tg_id);
-      if (!tgId) {
-        return NextResponse.json(
-          { error: "Некорректный Telegram ID." },
-          { status: 400 }
-        );
-      }
-      updates.tg_id = String(tgId);
-    }
 
     if (body.full_name !== undefined) {
       const fullName =
@@ -121,14 +90,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     let selectedRole: Role | undefined;
     if (body.role_id !== undefined) {
       const roleId = typeof body.role_id === "string" ? body.role_id : "";
-      if (!UUID_PATTERN.test(roleId)) {
+      if (!isUuid(roleId)) {
         return NextResponse.json(
           { error: "Некорректная роль." },
           { status: 400 }
         );
       }
 
-      const { data: role, error: roleError } = await getSupabaseAdmin()
+      const { data: role, error: roleError } = await supabase
         .from("roles")
         .select("id,name,is_admin")
         .eq("id", roleId)
@@ -145,11 +114,25 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       }
 
       updates.role_id = roleId;
-      selectedRole = {
-        id: role.id as string,
-        name: role.name as string,
-        is_admin: role.is_admin as boolean
-      };
+      selectedRole = mapRole(role as Record<string, unknown>);
+
+      if (oldRole.is_admin && !selectedRole.is_admin) {
+        if (
+          Number(targetEmployee.tg_id) === authorization.employee.tg_id
+        ) {
+          return NextResponse.json(
+            { error: "Нельзя снять с себя права администратора" },
+            { status: 400 }
+          );
+        }
+
+        if ((await countAdministrators()) <= 1) {
+          return NextResponse.json(
+            { error: "Нельзя оставить систему без администраторов" },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     if (Object.keys(updates).length === 0) {
@@ -159,12 +142,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("employees")
       .update(updates)
       .eq("id", params.id)
-      .select("id,tg_id,full_name,role_id,created_at")
+      .select(
+        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color"
+      )
       .maybeSingle();
 
     if (error) {
@@ -192,11 +176,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       if (roleError) {
         throw roleError;
       }
-      selectedRole = {
-        id: role.id as string,
-        name: role.name as string,
-        is_admin: role.is_admin as boolean
-      };
+      selectedRole = mapRole(role as Record<string, unknown>);
     }
 
     return NextResponse.json({
@@ -215,7 +195,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  if (!UUID_PATTERN.test(params.id)) {
+  if (!isUuid(params.id)) {
     return NextResponse.json(
       { error: "Некорректный идентификатор сотрудника." },
       { status: 400 }
@@ -223,12 +203,46 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    const deniedResponse = await requireAdmin(request);
-    if (deniedResponse) {
-      return deniedResponse;
+    const authorization = await requireAdmin(request);
+    if ("response" in authorization) {
+      return authorization.response;
     }
 
-    const { data, error } = await getSupabaseAdmin()
+    const supabase = getSupabaseAdmin();
+    const { data: targetEmployee, error: targetError } = await supabase
+      .from("employees")
+      .select("id,role_id,role:roles!inner(is_admin)")
+      .eq("id", params.id)
+      .maybeSingle();
+
+    if (targetError) {
+      throw targetError;
+    }
+    if (!targetEmployee) {
+      return NextResponse.json(
+        { error: "Сотрудник не найден." },
+        { status: 404 }
+      );
+    }
+
+    const rawTargetRole = Array.isArray(targetEmployee.role)
+      ? targetEmployee.role[0]
+      : targetEmployee.role;
+    if (!rawTargetRole || typeof rawTargetRole !== "object") {
+      throw new Error("Employee role relation is missing");
+    }
+
+    if (
+      Boolean((rawTargetRole as Record<string, unknown>).is_admin) &&
+      (await countAdministrators()) <= 1
+    ) {
+      return NextResponse.json(
+        { error: "Нельзя оставить систему без администраторов" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
       .from("employees")
       .delete()
       .eq("id", params.id)

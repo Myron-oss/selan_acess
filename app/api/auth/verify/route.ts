@@ -45,8 +45,12 @@ export async function POST(request: NextRequest) {
     const sessionToken = createSessionToken(employee.tg_id, sessionSecret);
     const response = NextResponse.json({
       employee: {
+        tg_id: employee.tg_id,
         full_name: employee.full_name,
-        role: employee.role
+        role: employee.role,
+        avatar_url: employee.avatar_url,
+        theme_preference: employee.theme_preference,
+        accent_color: employee.accent_color
       },
       is_admin: employee.role.is_admin
     });

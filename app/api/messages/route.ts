@@ -1,55 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getEmployeeContext, getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { getSessionUserId } from "@/lib/telegramAuth";
-import type { Message } from "@/lib/types";
+import {
+  ATTACHMENT_LIMITS,
+  CHAT_ATTACHMENTS_BUCKET,
+  isFileNameAllowedForCategory
+} from "@/lib/attachments";
+import { requireEmployee } from "@/lib/apiAuth";
+import { canAccessChannel } from "@/lib/channelService";
+import { mapMessage } from "@/lib/entityMappers";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { MessageFileType } from "@/lib/types";
+import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-async function canAccessChannel(
-  channelId: string,
-  roleId: string
-): Promise<boolean> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("channels")
-    .select("id")
-    .eq("id", channelId)
-    .contains("allowed_role_ids", [roleId])
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return Boolean(data);
+function isAttachmentType(value: unknown): value is MessageFileType {
+  return value === "image" || value === "video" || value === "document";
 }
 
-function serializeMessage(message: Record<string, unknown>): Message {
-  return {
-    id: String(message.id),
-    channel_id: String(message.channel_id),
-    sender_tg_id: Number(message.sender_tg_id),
-    sender_name: String(message.sender_name),
-    text: String(message.text),
-    created_at: String(message.created_at)
-  };
+function isChatAttachmentUrl(value: string, channelId: string): boolean {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+  if (!supabaseUrl) {
+    return false;
+  }
+
+  const prefix = `${supabaseUrl}/storage/v1/object/public/${CHAT_ATTACHMENTS_BUCKET}/${channelId}/`;
+  return value.startsWith(prefix);
 }
 
 export async function GET(request: NextRequest) {
-  const tgId = getSessionUserId(request);
-  if (!tgId) {
-    return NextResponse.json(
-      { error: "Требуется авторизация." },
-      { status: 401 }
-    );
-  }
-
   const channelId = request.nextUrl.searchParams.get("channel_id") ?? "";
-  if (!UUID_PATTERN.test(channelId)) {
+  if (!isUuid(channelId)) {
     return NextResponse.json(
       { error: "Некорректный идентификатор ветки." },
       { status: 400 }
@@ -57,13 +39,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const employee = await getEmployeeContext(tgId);
-    if (!employee) {
-      return NextResponse.json(
-        { error: "Доступ не предоставлен" },
-        { status: 403 }
-      );
+    const authorization = await requireEmployee(request);
+    if ("response" in authorization) {
+      return authorization.response;
     }
+    const { employee } = authorization;
 
     if (!(await canAccessChannel(channelId, employee.role_id))) {
       return NextResponse.json(
@@ -75,7 +55,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await getSupabaseAdmin()
       .from("messages")
       .select(
-        "id,channel_id,sender_tg_id,sender_name,text,created_at"
+        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,created_at"
       )
       .eq("channel_id", channelId)
       .order("created_at", { ascending: true })
@@ -85,9 +65,35 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    const senderIds = Array.from(
+      new Set((data ?? []).map((message) => String(message.sender_tg_id)))
+    );
+    const avatarBySender = new Map<string, string | null>();
+
+    if (senderIds.length > 0) {
+      const { data: senders, error: sendersError } = await getSupabaseAdmin()
+        .from("employees")
+        .select("tg_id,avatar_url")
+        .in("tg_id", senderIds);
+
+      if (sendersError) {
+        throw sendersError;
+      }
+
+      for (const sender of senders ?? []) {
+        avatarBySender.set(
+          String(sender.tg_id),
+          (sender.avatar_url as string | null) ?? null
+        );
+      }
+    }
+
     return NextResponse.json({
       messages: (data ?? []).map((message) =>
-        serializeMessage(message as Record<string, unknown>)
+        mapMessage(
+          message as Record<string, unknown>,
+          avatarBySender.get(String(message.sender_tg_id)) ?? null
+        )
       )
     });
   } catch (error) {
@@ -100,44 +106,75 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const tgId = getSessionUserId(request);
-  if (!tgId) {
-    return NextResponse.json(
-      { error: "Требуется авторизация." },
-      { status: 401 }
-    );
-  }
-
   try {
     const body = (await request.json()) as {
       channel_id?: unknown;
       text?: unknown;
+      file_url?: unknown;
+      file_type?: unknown;
+      file_name?: unknown;
+      file_size?: unknown;
     };
     const channelId =
       typeof body.channel_id === "string" ? body.channel_id : "";
     const text = typeof body.text === "string" ? body.text.trim() : "";
+    const fileUrl =
+      typeof body.file_url === "string" ? body.file_url.trim() : "";
+    const fileType = body.file_type;
+    const fileName =
+      typeof body.file_name === "string" ? body.file_name.trim() : "";
+    const fileSize =
+      typeof body.file_size === "number" ? body.file_size : Number.NaN;
+    const hasAttachment = Boolean(fileUrl);
 
-    if (!UUID_PATTERN.test(channelId)) {
+    if (!isUuid(channelId)) {
       return NextResponse.json(
         { error: "Некорректный идентификатор ветки." },
         { status: 400 }
       );
     }
 
-    if (!text || text.length > 2000) {
+    if (text.length > 2000 || (!text && !hasAttachment)) {
       return NextResponse.json(
-        { error: "Сообщение должно содержать от 1 до 2000 символов." },
+        { error: "Добавьте текст или вложение. Максимальная длина текста — 2000 символов." },
         { status: 400 }
       );
     }
 
-    const employee = await getEmployeeContext(tgId);
-    if (!employee) {
+    if (
+      hasAttachment &&
+      (!isAttachmentType(fileType) ||
+        !fileName ||
+        fileName.length > 255 ||
+        !Number.isSafeInteger(fileSize) ||
+        fileSize <= 0 ||
+        fileSize > ATTACHMENT_LIMITS[fileType] ||
+        !isFileNameAllowedForCategory(fileName, fileType) ||
+        !isChatAttachmentUrl(fileUrl, channelId))
+    ) {
       return NextResponse.json(
-        { error: "Доступ не предоставлен" },
-        { status: 403 }
+        { error: "Некорректные данные вложения." },
+        { status: 400 }
       );
     }
+
+    if (
+      !hasAttachment &&
+      (body.file_type !== undefined ||
+        body.file_name !== undefined ||
+        body.file_size !== undefined)
+    ) {
+      return NextResponse.json(
+        { error: "Метаданные файла переданы без ссылки на вложение." },
+        { status: 400 }
+      );
+    }
+
+    const authorization = await requireEmployee(request);
+    if ("response" in authorization) {
+      return authorization.response;
+    }
+    const { employee } = authorization;
 
     if (!(await canAccessChannel(channelId, employee.role_id))) {
       return NextResponse.json(
@@ -152,9 +189,15 @@ export async function POST(request: NextRequest) {
         channel_id: channelId,
         sender_tg_id: String(employee.tg_id),
         sender_name: employee.full_name,
-        text
+        text,
+        file_url: hasAttachment ? fileUrl : null,
+        file_type: hasAttachment ? fileType : null,
+        file_name: hasAttachment ? fileName : null,
+        file_size: hasAttachment ? fileSize : null
       })
-      .select("id,channel_id,sender_tg_id,sender_name,text,created_at")
+      .select(
+        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,created_at"
+      )
       .single();
 
     if (error) {
@@ -162,7 +205,12 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { message: serializeMessage(data as Record<string, unknown>) },
+      {
+        message: mapMessage(
+          data as Record<string, unknown>,
+          employee.avatar_url
+        )
+      },
       { status: 201 }
     );
   } catch (error) {
