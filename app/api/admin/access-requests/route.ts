@@ -24,7 +24,15 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const requests = (data ?? []).map((row) =>
+    const rows = data ?? [];
+
+    console.log("[GET /api/admin/access-requests] Supabase response", {
+      count: rows.length,
+      format: Array.isArray(data) ? "array" : typeof data,
+      rows
+    });
+
+    const requests = rows.map((row) =>
       mapAccessRequest(row as Record<string, unknown>)
     );
 

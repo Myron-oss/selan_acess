@@ -47,8 +47,10 @@ export default function AccessRequestsSection({
     [roles]
   );
 
-  const loadRequests = useCallback(async () => {
-    setLoading(true);
+  const loadRequests = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError("");
 
     try {
@@ -57,6 +59,10 @@ export default function AccessRequestsSection({
         { cache: "no-store" },
         "Не удалось загрузить заявки."
       );
+
+      if (!Array.isArray(body.requests)) {
+        throw new Error("API вернул некорректный формат списка заявок.");
+      }
 
       setRequests(body.requests);
     } catch (caughtError) {
@@ -67,7 +73,16 @@ export default function AccessRequestsSection({
   }, []);
 
   useEffect(() => {
-    void loadRequests();
+    void loadRequests(true);
+
+    const refresh = () => void loadRequests();
+    const intervalId = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+    };
   }, [loadRequests]);
 
   useEffect(() => {
@@ -254,7 +269,7 @@ export default function AccessRequestsSection({
               <button
                 type="button"
                 className="mt-2 font-semibold underline"
-                onClick={() => void loadRequests()}
+                onClick={() => void loadRequests(true)}
               >
                 Повторить
               </button>
