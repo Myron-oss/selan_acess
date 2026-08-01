@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { readSupabasePublicConfig } from "@/utils/supabase/config";
+import { fetchWithNoStore } from "@/utils/supabase/fetch";
 
 export async function updateSession(request: NextRequest) {
   const config = readSupabasePublicConfig();
@@ -27,6 +28,9 @@ export async function updateSession(request: NextRequest) {
     config.supabaseUrl,
     config.supabaseKey,
     {
+      global: {
+        fetch: fetchWithNoStore
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();

@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { getSupabasePublicConfig } from "@/utils/supabase/config";
+import { fetchWithNoStore } from "@/utils/supabase/fetch";
 
 export function createClient(
   cookieStore: Awaited<ReturnType<typeof cookies>>
@@ -11,6 +12,9 @@ export function createClient(
   const { supabaseUrl, supabaseKey } = getSupabasePublicConfig();
 
   return createServerClient(supabaseUrl, supabaseKey, {
+    global: {
+      fetch: fetchWithNoStore
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();

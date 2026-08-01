@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { mapEmployee, mapRole } from "@/lib/entityMappers";
 import type { AuthenticatedEmployee } from "@/lib/types";
+import { fetchWithNoStore } from "@/utils/supabase/fetch";
 
 let adminClient: SupabaseClient | undefined;
 
@@ -23,6 +24,9 @@ export function getSupabaseAdmin(): SupabaseClient {
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    global: {
+      fetch: fetchWithNoStore
     }
   });
 
