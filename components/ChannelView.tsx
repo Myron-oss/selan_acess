@@ -34,6 +34,20 @@ interface ChannelViewProps {
   };
 }
 
+interface MessagePageResponse {
+  messages: Message[];
+  has_more: boolean;
+  next_cursor: { before_at: string } | null;
+}
+
+interface CachedMessagePage {
+  messages: Message[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+const messagePageCache = new Map<string, CachedMessagePage>();
+
 function insertMessageChronologically(
   messages: Message[],
   newMessage: Message
@@ -65,9 +79,19 @@ export default function ChannelView({
   channel,
   currentUser
 }: ChannelViewProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const cachedPageRef = useRef(messagePageCache.get(channel.id));
+  const [messages, setMessages] = useState<Message[]>(
+    () => cachedPageRef.current?.messages ?? []
+  );
+  const [hasMore, setHasMore] = useState(
+    () => cachedPageRef.current?.hasMore ?? false
+  );
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    () => cachedPageRef.current?.nextCursor ?? null
+  );
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedPageRef.current);
   const [error, setError] = useState("");
   const avatarBySenderRef = useRef(new Map<number, string | null>());
   const markedReadIdsRef = useRef(new Set<string>());
@@ -134,12 +158,14 @@ export default function ChannelView({
 
   const removeReaction = useCallback((reactionId: string) => {
     setMessages((currentMessages) =>
-      currentMessages.map((message) => ({
-        ...message,
-        reactions: message.reactions.filter(
+      currentMessages.map((message) => {
+        const reactions = message.reactions.filter(
           (reaction) => reaction.id !== reactionId
-        )
-      }))
+        );
+        return reactions.length === message.reactions.length
+          ? message
+          : { ...message, reactions };
+      })
     );
   }, []);
 
@@ -166,13 +192,13 @@ export default function ChannelView({
     const supabase = getSupabaseClient();
 
     async function loadMessages() {
-      setLoading(true);
+      setLoading(!cachedPageRef.current);
       setError("");
       markedReadIdsRef.current.clear();
       setReplyingTo(null);
 
       try {
-        const body = await apiFetch<{ messages: Message[] }>(
+        const body = await apiFetch<MessagePageResponse>(
           `/api/messages?channel_id=${encodeURIComponent(channel.id)}`,
           { cache: "no-store" },
           "Не удалось загрузить сообщения."
@@ -189,6 +215,8 @@ export default function ChannelView({
             }
           }
           setMessages(body.messages);
+          setHasMore(body.has_more);
+          setNextCursor(body.next_cursor?.before_at ?? null);
         }
       } catch (caughtError) {
         if (!cancelled) {
@@ -272,6 +300,54 @@ export default function ChannelView({
     upsertReaction,
     upsertRead
   ]);
+
+  useEffect(() => {
+    messagePageCache.set(channel.id, {
+      messages,
+      hasMore,
+      nextCursor
+    });
+  }, [channel.id, hasMore, messages, nextCursor]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!hasMore || !nextCursor || loadingOlder) {
+      return;
+    }
+
+    setLoadingOlder(true);
+    try {
+      const params = new URLSearchParams({
+        channel_id: channel.id,
+        before_at: nextCursor
+      });
+      const body = await apiFetch<MessagePageResponse>(
+        `/api/messages?${params.toString()}`,
+        { cache: "no-store" },
+        "Не удалось загрузить более ранние сообщения."
+      );
+
+      setMessages((currentMessages) => {
+        const currentIds = new Set(
+          currentMessages.map((message) => message.id)
+        );
+        const olderMessages = body.messages.filter(
+          (message) => !currentIds.has(message.id)
+        );
+        return [...olderMessages, ...currentMessages];
+      });
+      setHasMore(body.has_more);
+      setNextCursor(body.next_cursor?.before_at ?? null);
+    } catch (caughtError) {
+      setError(
+        getErrorMessage(
+          caughtError,
+          "Не удалось загрузить более ранние сообщения."
+        )
+      );
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [channel.id, hasMore, loadingOlder, nextCursor]);
 
   const markMessagesRead = useCallback(
     async (messageIds: string[]) => {
@@ -374,11 +450,14 @@ export default function ChannelView({
       <MessageList
         messages={messages}
         loading={loading}
+        hasMore={hasMore}
+        loadingOlder={loadingOlder}
         error={error}
         currentUserTgId={currentUser.tg_id}
         onReply={setReplyingTo}
         onToggleReaction={toggleReaction}
         onMessagesVisible={markMessagesRead}
+        onLoadOlder={loadOlderMessages}
       />
       <MessageInput
         channelId={channel.id}

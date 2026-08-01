@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import {
   isAccentColor,
   isThemePreference
 } from "@/lib/preferences";
 import { requireEmployee } from "@/lib/apiAuth";
+import { EMPLOYEE_AVATARS_CACHE_TAG } from "@/lib/cachedReferenceData";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -111,6 +113,10 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       throw error;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, "avatar_url")) {
+      revalidateTag(EMPLOYEE_AVATARS_CACHE_TAG);
     }
 
     return NextResponse.json({

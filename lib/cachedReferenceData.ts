@@ -7,6 +7,26 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { AdminChannel, Channel, Role } from "@/lib/types";
 
 export const CHANNELS_CACHE_TAG = "channels";
+export const EMPLOYEE_AVATARS_CACHE_TAG = "employee-avatars";
+
+export const getCachedEmployeeAvatars = unstable_cache(
+  async (): Promise<Array<[string, string | null]>> => {
+    const { data, error } = await getSupabaseAdmin()
+      .from("employees")
+      .select("tg_id,avatar_url");
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).map((employee) => [
+        String(employee.tg_id),
+        (employee.avatar_url as string | null) ?? null
+      ]);
+  },
+  ["employee-avatars"],
+  { revalidate: 30, tags: [EMPLOYEE_AVATARS_CACHE_TAG] }
+);
 
 export const getCachedRoles = unstable_cache(
   async (): Promise<Role[]> => {

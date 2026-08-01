@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireEmployee } from "@/lib/apiAuth";
 import { MAX_AVATAR_BYTES } from "@/lib/attachments";
+import { EMPLOYEE_AVATARS_CACHE_TAG } from "@/lib/cachedReferenceData";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -66,6 +68,8 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       throw updateError;
     }
+
+    revalidateTag(EMPLOYEE_AVATARS_CACHE_TAG);
 
     return NextResponse.json({ avatar_url: avatarUrl });
   } catch (error) {

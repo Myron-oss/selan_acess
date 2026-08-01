@@ -6,6 +6,7 @@ import {
   isFileNameAllowedForCategory
 } from "@/lib/attachments";
 import { requireEmployee } from "@/lib/apiAuth";
+import { getCachedEmployeeAvatars } from "@/lib/cachedReferenceData";
 import { canAccessChannel } from "@/lib/channelService";
 import {
   mapMessage,
@@ -16,14 +17,30 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type {
   MessageFileType,
-  MessageReaction,
-  MessageRead,
   MessageReplyPreview
 } from "@/lib/types";
 import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const MESSAGE_PAGE_SIZE = 50;
+
+function getRelatedRows(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (row): row is Record<string, unknown> =>
+          Boolean(row) && typeof row === "object"
+      )
+    : [];
+}
+
+function getRelatedRow(value: unknown): Record<string, unknown> | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  return row && typeof row === "object"
+    ? (row as Record<string, unknown>)
+    : null;
+}
 
 function isAttachmentType(value: unknown): value is MessageFileType {
   return value === "image" || value === "video" || value === "document";
@@ -40,177 +57,138 @@ function isChatAttachmentUrl(value: string, channelId: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   const channelId = request.nextUrl.searchParams.get("channel_id") ?? "";
+  const beforeAt = request.nextUrl.searchParams.get("before_at") ?? "";
   if (!isUuid(channelId)) {
     return NextResponse.json(
       { error: "Некорректный идентификатор ветки." },
       { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
+  if (beforeAt && Number.isNaN(Date.parse(beforeAt))) {
+    return NextResponse.json(
+      { error: "Некорректный курсор истории сообщений." },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
   try {
+    const authStartedAt = performance.now();
     const authorization = await requireEmployee(request);
     if ("response" in authorization) {
       authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
     const { employee } = authorization;
+    const authFinishedAt = performance.now();
 
+    const accessStartedAt = performance.now();
     if (!(await canAccessChannel(channelId, employee.role_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
         { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
+    const accessFinishedAt = performance.now();
 
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
+    let messagesQuery = supabase
       .from("messages")
       .select(
-        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,created_at"
+        `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,created_at,
+        reactions:message_reactions!message_reactions_message_id_fkey(id,message_id,reactor_tg_id,emoji,created_at),
+        reads:message_reads!message_reads_message_id_fkey(id,message_id,reader_tg_id,reader_name,read_at),
+        reply_to:messages!messages_reply_to_message_id_fkey(id,sender_name,text)`
       )
       .eq("channel_id", channelId)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .order("id", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE + 1);
+
+    if (beforeAt) {
+      messagesQuery = messagesQuery.lt("created_at", beforeAt);
+    }
+
+    const queryStartedAt = performance.now();
+    const [messagesResult, avatarEntries] = await Promise.all([
+      messagesQuery,
+      getCachedEmployeeAvatars()
+    ]);
+    const queryFinishedAt = performance.now();
+    const { data, error } = messagesResult;
 
     if (error) {
       throw error;
     }
 
-    const recentMessages = [...(data ?? [])].reverse();
-    const senderIds = Array.from(
-      new Set(recentMessages.map((message) => String(message.sender_tg_id)))
-    );
-    const messageIds = recentMessages.map((message) => String(message.id));
-    const replyIds = Array.from(
-      new Set(
-        recentMessages
-          .map((message) => message.reply_to_message_id)
-          .filter((id): id is string => typeof id === "string")
-      )
-    );
-
-    async function loadSenders() {
-      if (senderIds.length === 0) {
-        return [];
-      }
-
-      const { data: rows, error: rowsError } = await supabase
-        .from("employees")
-        .select("tg_id,avatar_url")
-        .in("tg_id", senderIds);
-
-      if (rowsError) {
-        throw rowsError;
-      }
-      return rows ?? [];
-    }
-
-    async function loadReactions() {
-      if (messageIds.length === 0) {
-        return [];
-      }
-
-      const { data: rows, error: rowsError } = await supabase
-        .from("message_reactions")
-        .select("id,message_id,reactor_tg_id,emoji,created_at")
-        .in("message_id", messageIds)
-        .order("created_at", { ascending: true });
-
-      if (rowsError) {
-        throw rowsError;
-      }
-      return rows ?? [];
-    }
-
-    async function loadReads() {
-      if (messageIds.length === 0) {
-        return [];
-      }
-
-      const { data: rows, error: rowsError } = await supabase
-        .from("message_reads")
-        .select("id,message_id,reader_tg_id,reader_name,read_at")
-        .in("message_id", messageIds)
-        .order("read_at", { ascending: true });
-
-      if (rowsError) {
-        throw rowsError;
-      }
-      return rows ?? [];
-    }
-
-    async function loadReplies() {
-      if (replyIds.length === 0) {
-        return [];
-      }
-
-      const { data: rows, error: rowsError } = await supabase
-        .from("messages")
-        .select("id,sender_name,text")
-        .in("id", replyIds);
-
-      if (rowsError) {
-        throw rowsError;
-      }
-      return rows ?? [];
-    }
-
-    const [senders, reactionRows, readRows, replyRows] = await Promise.all([
-      loadSenders(),
-      loadReactions(),
-      loadReads(),
-      loadReplies()
-    ]);
-
-    const avatarBySender = new Map<string, string | null>();
-    for (const sender of senders) {
-      avatarBySender.set(
-        String(sender.tg_id),
-        (sender.avatar_url as string | null) ?? null
-      );
-    }
-
-    const reactionsByMessage = new Map<string, MessageReaction[]>();
-    for (const row of reactionRows) {
-      const reaction = mapMessageReaction(row as Record<string, unknown>);
-      const current = reactionsByMessage.get(reaction.message_id) ?? [];
-      current.push(reaction);
-      reactionsByMessage.set(reaction.message_id, current);
-    }
-
-    const readsByMessage = new Map<string, MessageRead[]>();
-    for (const row of readRows) {
-      const read = mapMessageRead(row as Record<string, unknown>);
-      const current = readsByMessage.get(read.message_id) ?? [];
-      current.push(read);
-      readsByMessage.set(read.message_id, current);
-    }
-
-    const replyById = new Map(
-      replyRows.map((row) => {
-        const reply = mapMessageReplyPreview(
-          row as Record<string, unknown>
+    const hasMore = (data?.length ?? 0) > MESSAGE_PAGE_SIZE;
+    const pageRows = (data ?? []).slice(0, MESSAGE_PAGE_SIZE);
+    const recentMessages = [...pageRows].reverse();
+    const avatarBySender = new Map(avatarEntries);
+    const messages = recentMessages.map((message) => {
+      const row = message as Record<string, unknown>;
+      const reactions = getRelatedRows(row.reactions)
+        .map(mapMessageReaction)
+        .sort((left, right) =>
+          left.created_at.localeCompare(right.created_at)
         );
-        return [reply.id, reply] as const;
-      })
-    );
+      const reads = getRelatedRows(row.reads)
+        .map(mapMessageRead)
+        .sort((left, right) => left.read_at.localeCompare(right.read_at));
+      const replyRow = getRelatedRow(row.reply_to);
+
+      return mapMessage(
+        row,
+        avatarBySender.get(String(message.sender_tg_id)) ?? null,
+        reactions,
+        reads,
+        replyRow ? mapMessageReplyPreview(replyRow) : null
+      );
+    });
+    const oldestMessage = recentMessages[0];
+    const finishedAt = performance.now();
+    const durations = {
+      auth_ms: authFinishedAt - authStartedAt,
+      access_ms: accessFinishedAt - accessStartedAt,
+      data_ms: queryFinishedAt - queryStartedAt,
+      total_ms: finishedAt - startedAt
+    };
+
+    console.info("[GET /api/messages] performance", {
+      channel_id: channelId,
+      count: messages.length,
+      has_more: hasMore,
+      data_api_round_trips: 2,
+      ...Object.fromEntries(
+        Object.entries(durations).map(([key, value]) => [
+          key,
+          Number(value.toFixed(1))
+        ])
+      )
+    });
 
     return NextResponse.json(
       {
-        messages: recentMessages.map((message) =>
-          mapMessage(
-            message as Record<string, unknown>,
-            avatarBySender.get(String(message.sender_tg_id)) ?? null,
-            reactionsByMessage.get(String(message.id)) ?? [],
-            readsByMessage.get(String(message.id)) ?? [],
-            typeof message.reply_to_message_id === "string"
-              ? replyById.get(message.reply_to_message_id) ?? null
-              : null
-          )
-        )
+        messages,
+        has_more: hasMore,
+        next_cursor:
+          hasMore && oldestMessage
+            ? { before_at: String(oldestMessage.created_at) }
+            : null
       },
-      { headers: { "Cache-Control": "no-store" } }
+      {
+        headers: {
+          "Cache-Control": "no-store",
+          "Server-Timing": [
+            `auth;dur=${durations.auth_ms.toFixed(1)}`,
+            `access;dur=${durations.access_ms.toFixed(1)}`,
+            `data;dur=${durations.data_ms.toFixed(1)}`,
+            `total;dur=${durations.total_ms.toFixed(1)}`
+          ].join(", "),
+          "X-Data-API-Round-Trips": "2"
+        }
+      }
     );
   } catch (error) {
     console.error("Failed to load messages", error);

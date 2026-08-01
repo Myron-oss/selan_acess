@@ -12,13 +12,9 @@ export async function broadcastMessageEvent(
   const channel = supabase.channel(getMessageChannelTopic(channelId));
 
   try {
-    const status = await channel.send({
-      type: "broadcast",
-      event,
-      payload
-    });
+    const status = await channel.httpSend(event, payload);
 
-    if (status !== "ok") {
+    if (!status.success) {
       console.error("Failed to broadcast message event", {
         channelId,
         event,
