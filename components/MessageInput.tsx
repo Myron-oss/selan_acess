@@ -4,6 +4,7 @@ import {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
+  memo,
   useEffect,
   useRef,
   useState
@@ -64,7 +65,7 @@ const stageLabels: Record<Exclude<UploadStage, "idle">, string> = {
   sending: "Отправляем сообщение…"
 };
 
-export default function MessageInput({
+function MessageInputComponent({
   channelId,
   replyTo,
   onSend,
@@ -497,6 +498,8 @@ export default function MessageInput({
     </>
   );
 }
+
+export default memo(MessageInputComponent);
 
 function AttachmentOption({
   icon,

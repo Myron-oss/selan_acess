@@ -58,20 +58,23 @@ export default function AdminPanel({
     void loadEmployees();
   }, [loadEmployees]);
 
-  function addEmployee(employee: Employee) {
+  const addEmployee = useCallback((employee: Employee) => {
     setEmployees((currentEmployees) =>
       [...currentEmployees, employee].sort((left, right) =>
         left.full_name.localeCompare(right.full_name, "ru")
       )
     );
-  }
+  }, []);
 
-  function approveEmployee(employee: Employee) {
-    addEmployee(employee);
-    void onChannelsChanged();
-  }
+  const approveEmployee = useCallback(
+    (employee: Employee) => {
+      addEmployee(employee);
+      void onChannelsChanged();
+    },
+    [addEmployee, onChannelsChanged]
+  );
 
-  function updateEmployee(employee: Employee) {
+  const updateEmployee = useCallback((employee: Employee) => {
     setEmployees((currentEmployees) =>
       currentEmployees
         .map((currentEmployee) =>
@@ -79,13 +82,13 @@ export default function AdminPanel({
         )
         .sort((left, right) => left.full_name.localeCompare(right.full_name, "ru"))
     );
-  }
+  }, []);
 
-  function deleteEmployee(employeeId: string) {
+  const deleteEmployee = useCallback((employeeId: string) => {
     setEmployees((currentEmployees) =>
       currentEmployees.filter((employee) => employee.id !== employeeId)
     );
-  }
+  }, []);
 
   return (
     <section className="h-full overflow-y-auto px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5">
@@ -102,41 +105,41 @@ export default function AdminPanel({
         </p>
       </div>
 
-      {loading ? (
-        <div className="py-10 text-center text-sm muted-text">
-          Загружаем сотрудников…
-        </div>
-      ) : error ? (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="panel p-5 text-sm text-red-700 dark:text-red-300"
-        >
-          <p>{error}</p>
-          <motion.button
-            type="button"
-            className="secondary-button mt-3"
-            onClick={() => void loadEmployees()}
-            whileTap={{ scale: 0.95 }}
-          >
-            Повторить
-          </motion.button>
-        </motion.div>
-      ) : (
-        <div className="space-y-5">
-          <AccessRequestsSection
-            roles={roles}
-            onApproved={approveEmployee}
-            onCountChange={onPendingCountChange}
-          />
-          <ChannelManager
-            roles={roles}
-            onChannelsChanged={onChannelsChanged}
-          />
-          <div>
-            <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Сотрудники: {employees.length}
-            </h3>
+      <div className="space-y-5">
+        <AccessRequestsSection
+          roles={roles}
+          onApproved={approveEmployee}
+          onCountChange={onPendingCountChange}
+        />
+        <ChannelManager
+          roles={roles}
+          onChannelsChanged={onChannelsChanged}
+        />
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Сотрудники{loading ? "" : `: ${employees.length}`}
+          </h3>
+          {loading ? (
+            <div className="py-10 text-center text-sm muted-text">
+              Загружаем сотрудников…
+            </div>
+          ) : error ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="panel p-5 text-sm text-red-700 dark:text-red-300"
+            >
+              <p>{error}</p>
+              <motion.button
+                type="button"
+                className="secondary-button mt-3"
+                onClick={() => void loadEmployees()}
+                whileTap={{ scale: 0.95 }}
+              >
+                Повторить
+              </motion.button>
+            </motion.div>
+          ) : (
             <EmployeeTable
               employees={employees}
               roles={roles}
@@ -144,9 +147,9 @@ export default function AdminPanel({
               onUpdated={updateEmployee}
               onDeleted={deleteEmployee}
             />
-          </div>
+          )}
         </div>
-      )}
+      </div>
       </div>
     </section>
   );

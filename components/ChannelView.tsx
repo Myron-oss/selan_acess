@@ -96,11 +96,17 @@ function toPinnedMessage(message: Message): PinnedMessage {
 }
 
 function findLatestLoadedPinned(messages: Message[]): PinnedMessage | null {
-  const latest = messages
-    .filter((message) => message.is_pinned && message.pinned_at)
-    .sort((left, right) =>
-      String(right.pinned_at).localeCompare(String(left.pinned_at))
-    )[0];
+  let latest: Message | null = null;
+  for (const message of messages) {
+    if (
+      message.is_pinned &&
+      message.pinned_at &&
+      (!latest ||
+        String(message.pinned_at).localeCompare(String(latest.pinned_at)) > 0)
+    ) {
+      latest = message;
+    }
+  }
   return latest ? toPinnedMessage(latest) : null;
 }
 
@@ -550,32 +556,37 @@ export default function ChannelView({
     setOpenedPinnedMessage(currentPinned);
   }, []);
 
-  async function sendMessage({
-    text,
-    attachment,
-    replyToMessageId
-  }: {
-    text: string;
-    attachment?: MessageAttachment;
-    replyToMessageId?: string;
-  }) {
-    const body = await apiFetch<{ message: Message }>(
-      "/api/messages",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channel_id: channel.id,
-          text,
-          reply_to_message_id: replyToMessageId,
-          ...(attachment ?? {})
-        })
-      },
-      "Не удалось отправить сообщение."
-    );
+  const sendMessage = useCallback(
+    async ({
+      text,
+      attachment,
+      replyToMessageId
+    }: {
+      text: string;
+      attachment?: MessageAttachment;
+      replyToMessageId?: string;
+    }) => {
+      const body = await apiFetch<{ message: Message }>(
+        "/api/messages",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channel_id: channel.id,
+            text,
+            reply_to_message_id: replyToMessageId,
+            ...(attachment ?? {})
+          })
+        },
+        "Не удалось отправить сообщение."
+      );
 
-    addMessage(body.message);
-  }
+      addMessage(body.message);
+    },
+    [addMessage, channel.id]
+  );
+
+  const cancelReply = useCallback(() => setReplyingTo(null), []);
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label={channel.name}>
@@ -637,7 +648,7 @@ export default function ChannelView({
         channelId={channel.id}
         replyTo={replyingTo}
         onSend={sendMessage}
-        onCancelReply={() => setReplyingTo(null)}
+        onCancelReply={cancelReply}
       />
 
       <AnimatePresence>
