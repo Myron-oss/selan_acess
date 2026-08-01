@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireEmployee } from "@/lib/apiAuth";
+import { runAfterResponse } from "@/lib/backgroundTasks";
 import { canAccessChannel } from "@/lib/channelService";
 import { mapMessageRead } from "@/lib/entityMappers";
 import { broadcastMessageEvent } from "@/lib/messageBroadcast";
@@ -100,9 +101,9 @@ export async function POST(request: NextRequest) {
       mapMessageRead(read as Record<string, unknown>)
     );
     if (reads.length > 0) {
-      await broadcastMessageEvent(channelId, MESSAGE_READS_EVENT, {
-        reads
-      });
+      runAfterResponse(
+        broadcastMessageEvent(channelId, MESSAGE_READS_EVENT, { reads })
+      );
     }
 
     return NextResponse.json(

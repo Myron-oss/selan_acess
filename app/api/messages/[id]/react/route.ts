@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireEmployee } from "@/lib/apiAuth";
+import { runAfterResponse } from "@/lib/backgroundTasks";
 import { canAccessChannel } from "@/lib/channelService";
 import { mapMessageReaction } from "@/lib/entityMappers";
 import { broadcastMessageEvent } from "@/lib/messageBroadcast";
@@ -85,10 +86,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       throw removeError;
     }
     if (removed) {
-      await broadcastMessageEvent(channelId, MESSAGE_REACTION_EVENT, {
-        action: "delete",
-        reaction_id: String(removed.id)
-      });
+      runAfterResponse(
+        broadcastMessageEvent(channelId, MESSAGE_REACTION_EVENT, {
+          action: "delete",
+          reaction_id: String(removed.id)
+        })
+      );
 
       return NextResponse.json(
         {
@@ -141,10 +144,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     const reaction = mapMessageReaction(
       inserted as Record<string, unknown>
     );
-    await broadcastMessageEvent(channelId, MESSAGE_REACTION_EVENT, {
-      action: "upsert",
-      reaction
-    });
+    runAfterResponse(
+      broadcastMessageEvent(channelId, MESSAGE_REACTION_EVENT, {
+        action: "upsert",
+        reaction
+      })
+    );
 
     return NextResponse.json(
       {
