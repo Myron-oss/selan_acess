@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
+import {
+  CHANNELS_CACHE_TAG,
+  getCachedAdminChannels
+} from "@/lib/cachedReferenceData";
 import { rolesExist } from "@/lib/channelService";
 import { mapAdminChannel } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -17,20 +22,11 @@ export async function GET(request: NextRequest) {
       return authorization.response;
     }
 
-    const { data, error } = await getSupabaseAdmin()
-      .from("channels")
-      .select("id,name,emoji,allowed_role_ids")
-      .order("name", { ascending: true });
-
-    if (error) {
-      throw error;
-    }
+    const channels = await getCachedAdminChannels();
 
     return NextResponse.json(
       {
-        channels: (data ?? []).map((row) =>
-          mapAdminChannel(row as Record<string, unknown>)
-        )
+        channels
       },
       { headers: { "Cache-Control": "no-store" } }
     );
@@ -91,6 +87,8 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
+
+    revalidateTag(CHANNELS_CACHE_TAG);
 
     return NextResponse.json(
       { channel: mapAdminChannel(data as Record<string, unknown>) },

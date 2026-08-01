@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/apiAuth";
-import { mapEmployee, mapRole } from "@/lib/entityMappers";
+import { getCachedRoles } from "@/lib/cachedReferenceData";
+import { mapEmployee } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -16,32 +17,20 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
-    const [
-      { data: employeeRows, error: employeeError },
-      { data: roleRows, error: roleError }
-    ] = await Promise.all([
-      supabase
-        .from("employees")
-        .select(
-          "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color"
-        )
-        .order("full_name", { ascending: true }),
-      supabase
-        .from("roles")
-        .select("id,name,is_admin")
-        .order("name", { ascending: true })
-    ]);
+    const [{ data: employeeRows, error: employeeError }, roles] =
+      await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color"
+          )
+          .order("full_name", { ascending: true }),
+        getCachedRoles()
+      ]);
 
     if (employeeError) {
       throw employeeError;
     }
-    if (roleError) {
-      throw roleError;
-    }
-
-    const roles = (roleRows ?? []).map((role) =>
-      mapRole(role as Record<string, unknown>)
-    );
     const roleById = new Map(roles.map((role) => [role.id, role]));
     const employees = (employeeRows ?? []).map((employee) =>
       mapEmployee(

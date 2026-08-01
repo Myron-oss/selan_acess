@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
+import { CHANNELS_CACHE_TAG } from "@/lib/cachedReferenceData";
 import { mapEmployee, mapRole } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/validation";
@@ -88,6 +90,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       row as Record<string, unknown>,
       mapRole(role as Record<string, unknown>)
     );
+
+    revalidateTag(CHANNELS_CACHE_TAG);
 
     return NextResponse.json({ employee });
   } catch (error) {

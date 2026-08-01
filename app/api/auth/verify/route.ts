@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getCachedChannelsForRole } from "@/lib/cachedReferenceData";
 import { getEmployeeContext } from "@/lib/supabaseAdmin";
 import {
   createSessionToken,
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const channels = await getCachedChannelsForRole(employee.role_id);
     const sessionToken = createSessionToken(employee.tg_id, sessionSecret);
     const response = NextResponse.json({
       employee: {
@@ -52,7 +54,8 @@ export async function POST(request: NextRequest) {
         theme_preference: employee.theme_preference,
         accent_color: employee.accent_color
       },
-      is_admin: employee.role.is_admin
+      is_admin: employee.role.is_admin,
+      channels
     });
 
     // initData проверяется один раз здесь. Все следующие защищённые запросы

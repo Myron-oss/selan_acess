@@ -59,15 +59,16 @@ export async function GET(request: NextRequest) {
         "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,created_at"
       )
       .eq("channel_id", channelId)
-      .order("created_at", { ascending: true })
-      .limit(500);
+      .order("created_at", { ascending: false })
+      .limit(50);
 
     if (error) {
       throw error;
     }
 
+    const recentMessages = [...(data ?? [])].reverse();
     const senderIds = Array.from(
-      new Set((data ?? []).map((message) => String(message.sender_tg_id)))
+      new Set(recentMessages.map((message) => String(message.sender_tg_id)))
     );
     const avatarBySender = new Map<string, string | null>();
 
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        messages: (data ?? []).map((message) =>
+        messages: recentMessages.map((message) =>
           mapMessage(
             message as Record<string, unknown>,
             avatarBySender.get(String(message.sender_tg_id)) ?? null

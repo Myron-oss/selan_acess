@@ -29,6 +29,7 @@ interface CurrentUser {
 interface AuthResponse {
   employee: CurrentUser;
   is_admin: boolean;
+  channels: Channel[];
 }
 
 type ActiveTab = string | "admin" | "settings";
@@ -85,20 +86,14 @@ export default function HomePage() {
           "Не удалось подтвердить доступ."
         );
 
-        const channelBody = await apiFetch<{ channels: Channel[] }>(
-          "/api/channels",
-          { cache: "no-store" },
-          "Не удалось загрузить ветки."
-        );
-
         if (cancelled) {
           return;
         }
 
         setCurrentUser(authBody.employee);
         setIsAdmin(authBody.is_admin);
-        setChannels(channelBody.channels);
-        setActiveTab(channelBody.channels[0]?.id ?? "settings");
+        setChannels(authBody.channels);
+        setActiveTab(authBody.channels[0]?.id ?? "settings");
 
         setStatus("ready");
       } catch (caughtError) {

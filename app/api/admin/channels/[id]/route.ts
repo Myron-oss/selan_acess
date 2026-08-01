@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
+import { CHANNELS_CACHE_TAG } from "@/lib/cachedReferenceData";
 import { rolesExist } from "@/lib/channelService";
 import { mapAdminChannel } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -95,6 +97,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       );
     }
 
+    revalidateTag(CHANNELS_CACHE_TAG);
+
     return NextResponse.json({
       channel: mapAdminChannel(data as Record<string, unknown>)
     });
@@ -137,6 +141,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
         { status: 404 }
       );
     }
+
+    revalidateTag(CHANNELS_CACHE_TAG);
 
     return NextResponse.json({ success: true });
   } catch (error) {

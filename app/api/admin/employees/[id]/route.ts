@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
+import { CHANNELS_CACHE_TAG } from "@/lib/cachedReferenceData";
 import { mapEmployee, mapRole } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Role } from "@/lib/types";
@@ -179,6 +181,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       selectedRole = mapRole(role as Record<string, unknown>);
     }
 
+    revalidateTag(CHANNELS_CACHE_TAG);
+
     return NextResponse.json({
       employee: mapEmployee(
         data as Record<string, unknown>,
@@ -258,6 +262,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
         { status: 404 }
       );
     }
+
+    revalidateTag(CHANNELS_CACHE_TAG);
 
     return NextResponse.json({ success: true });
   } catch (error) {
