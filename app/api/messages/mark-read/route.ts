@@ -13,6 +13,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
+    const authorization = await requireEmployee(request);
+    if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
+      return authorization.response;
+    }
+
     const body = (await request.json()) as {
       channel_id?: unknown;
       message_ids?: unknown;
@@ -40,12 +46,6 @@ export async function POST(request: NextRequest) {
         { error: "За один запрос можно отметить не более 50 сообщений." },
         { status: 400, headers: { "Cache-Control": "no-store" } }
       );
-    }
-
-    const authorization = await requireEmployee(request);
-    if ("response" in authorization) {
-      authorization.response.headers.set("Cache-Control", "no-store");
-      return authorization.response;
     }
 
     if (

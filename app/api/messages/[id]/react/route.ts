@@ -19,26 +19,26 @@ interface RouteContext {
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  if (!isUuid(params.id)) {
-    return NextResponse.json(
-      { error: "Некорректный идентификатор сообщения." },
-      { status: 400, headers: { "Cache-Control": "no-store" } }
-    );
-  }
-
   try {
+    const authorization = await requireEmployee(request);
+    if ("response" in authorization) {
+      authorization.response.headers.set("Cache-Control", "no-store");
+      return authorization.response;
+    }
+
+    if (!isUuid(params.id)) {
+      return NextResponse.json(
+        { error: "Некорректный идентификатор сообщения." },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     const body = (await request.json()) as { emoji?: unknown };
     if (!isMessageReactionEmoji(body.emoji)) {
       return NextResponse.json(
         { error: "Эта реакция не поддерживается." },
         { status: 400, headers: { "Cache-Control": "no-store" } }
       );
-    }
-
-    const authorization = await requireEmployee(request);
-    if ("response" in authorization) {
-      authorization.response.headers.set("Cache-Control", "no-store");
-      return authorization.response;
     }
 
     const supabase = getSupabaseAdmin();
