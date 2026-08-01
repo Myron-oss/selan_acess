@@ -6,6 +6,7 @@ import {
   isFileNameAllowedForCategory
 } from "@/lib/attachments";
 import { requireEmployee } from "@/lib/apiAuth";
+import { runAfterResponse } from "@/lib/backgroundTasks";
 import { getCachedEmployeeAvatars } from "@/lib/cachedReferenceData";
 import { canAccessChannel } from "@/lib/channelService";
 import {
@@ -16,6 +17,7 @@ import {
   mapPinnedMessage
 } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyChannelMembers } from "@/lib/telegramNotifications";
 import type {
   MessageFileType,
   MessageReplyPreview
@@ -24,6 +26,7 @@ import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 15;
 
 const MESSAGE_PAGE_SIZE = 50;
 const PINNED_MESSAGE_SELECT =
@@ -362,16 +365,30 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    const message = mapMessage(
+      data as Record<string, unknown>,
+      employee.avatar_url,
+      [],
+      [],
+      replyTo
+    );
+    runAfterResponse(
+      notifyChannelMembers({
+        channelId,
+        senderTgId: employee.tg_id,
+        senderName: employee.full_name,
+        text,
+        fileType:
+          hasAttachment && isAttachmentType(fileType) ? fileType : null,
+        fileName: hasAttachment ? fileName : null,
+        createdAt: message.created_at,
+        appOrigin:
+          process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin
+      })
+    );
+
     return NextResponse.json(
-      {
-        message: mapMessage(
-          data as Record<string, unknown>,
-          employee.avatar_url,
-          [],
-          [],
-          replyTo
-        )
-      },
+      { message },
       { status: 201 }
     );
   } catch (error) {

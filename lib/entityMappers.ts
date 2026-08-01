@@ -43,6 +43,7 @@ export function mapEmployee(row: DataRow, role?: Role): Employee {
       row.accent_color === "indigo"
         ? row.accent_color
         : "blue",
+    notifications_enabled: row.notifications_enabled !== false,
     role
   };
 }

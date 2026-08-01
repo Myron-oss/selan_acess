@@ -304,6 +304,48 @@ export default function SettingsPanel({
           </div>
         </div>
 
+        <div className="panel flex items-center gap-4 p-4">
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-xl dark:bg-[var(--accent-dark-soft)]"
+            aria-hidden="true"
+          >
+            🔔
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-50">
+              Уведомления о новых сообщениях
+            </h3>
+            <p className="mt-1 text-xs leading-5 muted-text">
+              Бот напишет в личку, когда в доступной вам ветке появится новое
+              сообщение.
+            </p>
+          </div>
+          <motion.button
+            type="button"
+            role="switch"
+            aria-checked={current.notifications_enabled}
+            aria-label="Уведомления о новых сообщениях"
+            disabled={saving}
+            onClick={() =>
+              void savePatch({
+                notifications_enabled: !current.notifications_enabled
+              })
+            }
+            whileTap={{ scale: 0.94 }}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 disabled:opacity-60 dark:focus:ring-offset-slate-900 ${
+              current.notifications_enabled
+                ? "bg-[var(--accent)]"
+                : "bg-slate-300 dark:bg-slate-600"
+            }`}
+          >
+            <motion.span
+              className="absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm"
+              animate={{ left: current.notifications_enabled ? 24 : 4 }}
+              transition={{ type: "spring", stiffness: 500, damping: 34 }}
+            />
+          </motion.button>
+        </div>
+
         {(message || error) && (
           <motion.p
             initial={{ opacity: 0, y: 6 }}

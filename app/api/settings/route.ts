@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
         settings: {
           theme_preference: employee.theme_preference,
           accent_color: employee.accent_color,
-          avatar_url: employee.avatar_url
+          avatar_url: employee.avatar_url,
+          notifications_enabled: employee.notifications_enabled
         }
       },
       { headers: { "Cache-Control": "no-store" } }
@@ -52,8 +53,9 @@ export async function PATCH(request: NextRequest) {
       theme_preference?: unknown;
       accent_color?: unknown;
       avatar_url?: unknown;
+      notifications_enabled?: unknown;
     };
-    const updates: Record<string, string | null> = {};
+    const updates: Record<string, string | boolean | null> = {};
 
     if (body.theme_preference !== undefined) {
       if (!isThemePreference(body.theme_preference)) {
@@ -97,6 +99,16 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (body.notifications_enabled !== undefined) {
+      if (typeof body.notifications_enabled !== "boolean") {
+        return NextResponse.json(
+          { error: "Некорректное значение настройки уведомлений." },
+          { status: 400 }
+        );
+      }
+      updates.notifications_enabled = body.notifications_enabled;
+    }
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "Нет настроек для изменения." },
@@ -108,7 +120,7 @@ export async function PATCH(request: NextRequest) {
       .from("employees")
       .update(updates)
       .eq("id", employee.id)
-      .select("theme_preference,accent_color,avatar_url")
+      .select("theme_preference,accent_color,avatar_url,notifications_enabled")
       .single();
 
     if (error) {
@@ -123,7 +135,8 @@ export async function PATCH(request: NextRequest) {
       settings: {
         theme_preference: data.theme_preference,
         accent_color: data.accent_color,
-        avatar_url: (data.avatar_url as string | null) ?? null
+        avatar_url: (data.avatar_url as string | null) ?? null,
+        notifications_enabled: data.notifications_enabled !== false
       }
     });
   } catch (error) {

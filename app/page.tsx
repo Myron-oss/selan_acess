@@ -24,6 +24,7 @@ interface CurrentUser {
   avatar_url: string | null;
   theme_preference: ThemePreference;
   accent_color: AccentColor;
+  notifications_enabled: boolean;
 }
 
 interface AuthResponse {
@@ -93,7 +94,17 @@ export default function HomePage() {
         setCurrentUser(authBody.employee);
         setIsAdmin(authBody.is_admin);
         setChannels(authBody.channels);
-        setActiveTab(authBody.channels[0]?.id ?? "settings");
+        const requestedChannelId = new URLSearchParams(
+          window.location.search
+        ).get("channel");
+        setActiveTab(
+          requestedChannelId &&
+            authBody.channels.some(
+              (channel) => channel.id === requestedChannelId
+            )
+            ? requestedChannelId
+            : authBody.channels[0]?.id ?? "settings"
+        );
 
         setStatus("ready");
       } catch (caughtError) {
@@ -243,7 +254,8 @@ export default function HomePage() {
   const settings: UserSettings = {
     theme_preference: currentUser.theme_preference,
     accent_color: currentUser.accent_color,
-    avatar_url: currentUser.avatar_url
+    avatar_url: currentUser.avatar_url,
+    notifications_enabled: currentUser.notifications_enabled
   };
 
   return (

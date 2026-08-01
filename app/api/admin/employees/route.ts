@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         supabase
           .from("employees")
           .select(
-            "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color"
+            "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,notifications_enabled"
           )
           .order("full_name", { ascending: true }),
         getCachedRoles()

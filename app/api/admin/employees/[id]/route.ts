@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const { data: targetEmployee, error: targetError } = await supabase
       .from("employees")
       .select(
-        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,role:roles!inner(id,name,is_admin)"
+        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,notifications_enabled,role:roles!inner(id,name,is_admin)"
       )
       .eq("id", params.id)
       .maybeSingle();
@@ -149,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .update(updates)
       .eq("id", params.id)
       .select(
-        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color"
+        "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,notifications_enabled"
       )
       .maybeSingle();
 

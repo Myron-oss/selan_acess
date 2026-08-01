@@ -13,6 +13,7 @@ export interface Employee {
   avatar_url: string | null;
   theme_preference: ThemePreference;
   accent_color: AccentColor;
+  notifications_enabled: boolean;
   role?: Role;
 }
 
@@ -114,6 +115,7 @@ export interface AuthenticatedEmployee {
   avatar_url: string | null;
   theme_preference: ThemePreference;
   accent_color: AccentColor;
+  notifications_enabled: boolean;
   role: Role;
 }
 
@@ -132,4 +134,5 @@ export interface UserSettings {
   theme_preference: ThemePreference;
   accent_color: AccentColor;
   avatar_url: string | null;
+  notifications_enabled: boolean;
 }

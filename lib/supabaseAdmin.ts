@@ -40,7 +40,7 @@ export async function getEmployeeContext(
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
     .select(
-      "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,role:roles!inner(id,name,is_admin)"
+      "id,tg_id,full_name,role_id,created_at,avatar_url,theme_preference,accent_color,notifications_enabled,role:roles!inner(id,name,is_admin)"
     )
     .eq("tg_id", String(tgId))
     .maybeSingle();

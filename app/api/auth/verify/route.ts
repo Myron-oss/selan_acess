@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
         role: employee.role,
         avatar_url: employee.avatar_url,
         theme_preference: employee.theme_preference,
-        accent_color: employee.accent_color
+        accent_color: employee.accent_color,
+        notifications_enabled: employee.notifications_enabled
       },
       is_admin: employee.role.is_admin,
       channels
