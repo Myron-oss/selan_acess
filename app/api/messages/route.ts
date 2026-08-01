@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,created_at,
         reactions:message_reactions!message_reactions_message_id_fkey(id,message_id,reactor_tg_id,emoji,created_at),
         reads:message_reads!message_reads_message_id_fkey(id,message_id,reader_tg_id,reader_name,read_at),
-        reply_to:messages!messages_reply_to_message_id_fkey(id,sender_name,text)`
+        reply_to:messages!reply_to_message_id(id,sender_name,text)`
       )
       .eq("channel_id", channelId)
       .order("created_at", { ascending: false })
