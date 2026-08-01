@@ -16,13 +16,6 @@ interface AccessRequestsSectionProps {
 interface RequestsResponse {
   requests: AccessRequest[];
   count: number;
-  debug: AccessRequestsDebug;
-}
-
-interface AccessRequestsDebug {
-  supabase_project_ref: string;
-  raw_query_count: number;
-  admin_tg_id: number;
 }
 
 const requestDateFormatter = new Intl.DateTimeFormat("ru-RU", {
@@ -44,7 +37,6 @@ export default function AccessRequestsSection({
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [debug, setDebug] = useState<AccessRequestsDebug | null>(null);
 
   const defaultRoleId = useMemo(
     () =>
@@ -73,7 +65,6 @@ export default function AccessRequestsSection({
       }
 
       setRequests(body.requests);
-      setDebug(body.debug);
     } catch (caughtError) {
       setError(getErrorMessage(caughtError, "Не удалось загрузить заявки."));
     } finally {
@@ -284,13 +275,6 @@ export default function AccessRequestsSection({
               </button>
             )}
           </div>
-        )}
-
-        {debug && (
-          <p className="mt-3 break-all text-[10px] text-slate-400 dark:text-slate-500">
-            debug: project={debug.supabase_project_ref}, count=
-            {debug.raw_query_count}, admin={debug.admin_tg_id}
-          </p>
         )}
       </div>
     </section>
