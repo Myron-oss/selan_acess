@@ -7,6 +7,19 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function getSupabaseProjectRef() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    return "missing";
+  }
+
+  try {
+    return new URL(supabaseUrl).hostname.split(".")[0] || "unknown";
+  } catch {
+    return "invalid";
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authorization = await requireAdmin(request);
@@ -38,7 +51,15 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json(
-      { requests, count: requests.length },
+      {
+        requests,
+        count: requests.length,
+        debug: {
+          supabase_project_ref: getSupabaseProjectRef(),
+          raw_query_count: rows.length,
+          admin_tg_id: authorization.employee.tg_id
+        }
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
