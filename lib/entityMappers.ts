@@ -3,6 +3,9 @@ import type {
   AdminChannel,
   Employee,
   Message,
+  MessageReaction,
+  MessageRead,
+  MessageReplyPreview,
   Role
 } from "@/lib/types";
 
@@ -71,7 +74,10 @@ export function mapAccessRequest(row: DataRow): AccessRequest {
 
 export function mapMessage(
   row: DataRow,
-  avatarUrl: string | null = null
+  avatarUrl: string | null = null,
+  reactions: MessageReaction[] = [],
+  reads: MessageRead[] = [],
+  replyTo: MessageReplyPreview | null = null
 ): Message {
   return {
     id: String(row.id),
@@ -94,6 +100,43 @@ export function mapMessage(
         : typeof row.file_size === "string"
           ? Number(row.file_size)
           : null,
+    reply_to_message_id:
+      typeof row.reply_to_message_id === "string"
+        ? row.reply_to_message_id
+        : null,
+    reply_to: replyTo,
+    reactions,
+    reads,
     created_at: String(row.created_at)
+  };
+}
+
+export function mapMessageReaction(row: DataRow): MessageReaction {
+  return {
+    id: String(row.id),
+    message_id: String(row.message_id),
+    reactor_tg_id: Number(row.reactor_tg_id),
+    emoji: String(row.emoji),
+    created_at: String(row.created_at)
+  };
+}
+
+export function mapMessageRead(row: DataRow): MessageRead {
+  return {
+    id: String(row.id),
+    message_id: String(row.message_id),
+    reader_tg_id: Number(row.reader_tg_id),
+    reader_name: String(row.reader_name),
+    read_at: String(row.read_at)
+  };
+}
+
+export function mapMessageReplyPreview(
+  row: DataRow
+): MessageReplyPreview {
+  return {
+    id: String(row.id),
+    sender_name: String(row.sender_name),
+    text: String(row.text)
   };
 }

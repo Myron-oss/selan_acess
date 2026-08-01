@@ -14,6 +14,7 @@ import {
   FileText,
   Image as ImageIcon,
   Plus,
+  Reply,
   Video,
   X
 } from "lucide-react";
@@ -25,17 +26,25 @@ import {
 } from "@/lib/attachments";
 import { apiFetch } from "@/lib/apiClient";
 import { getErrorMessage } from "@/lib/errors";
+import { getReplyPreviewText } from "@/lib/messageFeatures";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import type { MessageAttachment, MessageFileType } from "@/lib/types";
+import type {
+  Message,
+  MessageAttachment,
+  MessageFileType
+} from "@/lib/types";
 
 interface OutgoingMessage {
   text: string;
   attachment?: MessageAttachment;
+  replyToMessageId?: string;
 }
 
 interface MessageInputProps {
   channelId: string;
+  replyTo: Message | null;
   onSend: (message: OutgoingMessage) => Promise<void>;
+  onCancelReply: () => void;
 }
 
 interface AuthorizedUpload {
@@ -57,7 +66,9 @@ const stageLabels: Record<Exclude<UploadStage, "idle">, string> = {
 
 export default function MessageInput({
   channelId,
-  onSend
+  replyTo,
+  onSend,
+  onCancelReply
 }: MessageInputProps) {
   const [text, setText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -202,9 +213,14 @@ export default function MessageInput({
     try {
       const attachment = await uploadAttachment();
       setStage("sending");
-      await onSend({ text: cleanText, attachment });
+      await onSend({
+        text: cleanText,
+        attachment,
+        replyToMessageId: replyTo?.id
+      });
       setText("");
       clearAttachment();
+      onCancelReply();
     } catch (caughtError) {
       setError(
         getErrorMessage(caughtError, "Не удалось отправить сообщение.")
@@ -241,6 +257,43 @@ export default function MessageInput({
             {error}
           </p>
         )}
+
+        <AnimatePresence initial={false}>
+          {replyTo && (
+            <motion.div
+              className="mb-2 flex items-center gap-2.5 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)] dark:bg-[var(--accent-dark-soft)]">
+                <Reply size={17} />
+              </span>
+              <span className="min-w-0 flex-1 border-l-2 border-[var(--accent)] pl-2.5">
+                <span className="block truncate text-xs font-semibold text-[var(--accent)]">
+                  Ответ для {replyTo.sender_name}
+                </span>
+                <span className="mt-0.5 block truncate text-xs muted-text">
+                  {getReplyPreviewText(
+                    replyTo.text,
+                    replyTo.file_name ?? "Вложение"
+                  )}
+                </span>
+              </span>
+              <motion.button
+                type="button"
+                onClick={onCancelReply}
+                disabled={sending}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5 dark:hover:bg-white/10"
+                whileTap={{ scale: 0.92 }}
+                aria-label="Отменить ответ"
+              >
+                <X size={18} />
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {selectedFile && selectedType && (
           <div className="mb-2 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-2.5">

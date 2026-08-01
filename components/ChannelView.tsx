@@ -5,9 +5,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import MessageInput from "@/components/MessageInput";
 import MessageList from "@/components/MessageList";
 import { apiFetch } from "@/lib/apiClient";
+import {
+  mapMessage,
+  mapMessageReaction,
+  mapMessageRead
+} from "@/lib/entityMappers";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  getMessageChannelTopic,
+  MESSAGE_REACTION_EVENT,
+  MESSAGE_READS_EVENT,
+  type MessageReactionEmoji
+} from "@/lib/messageFeatures";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import type { Channel, Message, MessageAttachment } from "@/lib/types";
+import type {
+  Channel,
+  Message,
+  MessageAttachment,
+  MessageReaction,
+  MessageRead
+} from "@/lib/types";
 
 interface ChannelViewProps {
   channel: Channel;
@@ -49,9 +66,11 @@ export default function ChannelView({
   currentUser
 }: ChannelViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const avatarBySenderRef = useRef(new Map<number, string | null>());
+  const markedReadIdsRef = useRef(new Set<string>());
 
   const addMessage = useCallback((newMessage: Message) => {
     const knownAvatar =
@@ -70,10 +89,77 @@ export default function ChannelView({
       );
     }
 
-    setMessages((currentMessages) =>
-      insertMessageChronologically(currentMessages, enrichedMessage)
-    );
+    setMessages((currentMessages) => {
+      const originalMessage = enrichedMessage.reply_to_message_id
+        ? currentMessages.find(
+            (message) => message.id === enrichedMessage.reply_to_message_id
+          )
+        : null;
+      const messageWithReply =
+        !enrichedMessage.reply_to && originalMessage
+          ? {
+              ...enrichedMessage,
+              reply_to: {
+                id: originalMessage.id,
+                sender_name: originalMessage.sender_name,
+                text: originalMessage.text
+              }
+            }
+          : enrichedMessage;
+
+      return insertMessageChronologically(
+        currentMessages,
+        messageWithReply
+      );
+    });
   }, [currentUser.avatar_url, currentUser.tg_id]);
+
+  const upsertReaction = useCallback((reaction: MessageReaction) => {
+    setMessages((currentMessages) =>
+      currentMessages.map((message) => {
+        if (message.id !== reaction.message_id) {
+          return message;
+        }
+
+        return {
+          ...message,
+          reactions: [
+            ...message.reactions.filter((item) => item.id !== reaction.id),
+            reaction
+          ]
+        };
+      })
+    );
+  }, []);
+
+  const removeReaction = useCallback((reactionId: string) => {
+    setMessages((currentMessages) =>
+      currentMessages.map((message) => ({
+        ...message,
+        reactions: message.reactions.filter(
+          (reaction) => reaction.id !== reactionId
+        )
+      }))
+    );
+  }, []);
+
+  const upsertRead = useCallback((read: MessageRead) => {
+    setMessages((currentMessages) =>
+      currentMessages.map((message) =>
+        message.id === read.message_id
+          ? {
+              ...message,
+              reads: [
+                ...message.reads.filter((item) => item.id !== read.id),
+                read
+              ].sort((left, right) =>
+                left.read_at.localeCompare(right.read_at)
+              )
+            }
+          : message
+      )
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +168,8 @@ export default function ChannelView({
     async function loadMessages() {
       setLoading(true);
       setError("");
+      markedReadIdsRef.current.clear();
+      setReplyingTo(null);
 
       try {
         const body = await apiFetch<{ messages: Message[] }>(
@@ -118,7 +206,7 @@ export default function ChannelView({
     void loadMessages();
 
     const realtimeChannel = supabase
-      .channel(`messages:${channel.id}`)
+      .channel(getMessageChannelTopic(channel.id))
       .on(
         "postgres_changes",
         {
@@ -128,11 +216,47 @@ export default function ChannelView({
           filter: `channel_id=eq.${channel.id}`
         },
         (payload) => {
-          const rawMessage = payload.new as Omit<
-            Message,
-            "sender_avatar_url"
-          >;
-          addMessage({ ...rawMessage, sender_avatar_url: null });
+          addMessage(
+            mapMessage(payload.new as Record<string, unknown>, null)
+          );
+        }
+      )
+      .on(
+        "broadcast",
+        { event: MESSAGE_REACTION_EVENT },
+        ({ payload }) => {
+          if (payload.action === "delete") {
+            const removedId = String(payload.reaction_id ?? "");
+            if (removedId) {
+              removeReaction(removedId);
+            }
+            return;
+          }
+
+          if (payload.reaction && typeof payload.reaction === "object") {
+            upsertReaction(
+              mapMessageReaction(
+                payload.reaction as Record<string, unknown>
+              )
+            );
+          }
+        }
+      )
+      .on(
+        "broadcast",
+        { event: MESSAGE_READS_EVENT },
+        ({ payload }) => {
+          if (!Array.isArray(payload.reads)) {
+            return;
+          }
+
+          for (const read of payload.reads) {
+            if (read && typeof read === "object") {
+              upsertRead(
+                mapMessageRead(read as Record<string, unknown>)
+              );
+            }
+          }
         }
       )
       .subscribe();
@@ -141,14 +265,77 @@ export default function ChannelView({
       cancelled = true;
       void supabase.removeChannel(realtimeChannel);
     };
-  }, [addMessage, channel.id]);
+  }, [
+    addMessage,
+    channel.id,
+    removeReaction,
+    upsertReaction,
+    upsertRead
+  ]);
+
+  const markMessagesRead = useCallback(
+    async (messageIds: string[]) => {
+      const newIds = messageIds.filter(
+        (id) => !markedReadIdsRef.current.has(id)
+      );
+      if (newIds.length === 0) {
+        return;
+      }
+
+      newIds.forEach((id) => markedReadIdsRef.current.add(id));
+      try {
+        await apiFetch<{ marked: number }>(
+          "/api/messages/mark-read",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              channel_id: channel.id,
+              message_ids: newIds
+            })
+          },
+          "Не удалось отметить сообщения как прочитанные."
+        );
+      } catch {
+        newIds.forEach((id) => markedReadIdsRef.current.delete(id));
+      }
+    },
+    [channel.id]
+  );
+
+  const toggleReaction = useCallback(
+    async (messageId: string, emoji: MessageReactionEmoji) => {
+      const body = await apiFetch<{
+        active: boolean;
+        reaction: MessageReaction | null;
+        removed_reaction_id: string | null;
+      }>(
+        `/api/messages/${messageId}/react`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emoji })
+        },
+        "Не удалось изменить реакцию."
+      );
+
+      if (body.active && body.reaction) {
+        upsertReaction(body.reaction);
+      } else if (body.removed_reaction_id) {
+        removeReaction(body.removed_reaction_id);
+      }
+    },
+    [removeReaction, upsertReaction]
+  );
 
   async function sendMessage({
     text,
-    attachment
+    attachment,
+    replyToMessageId
   }: {
     text: string;
     attachment?: MessageAttachment;
+    replyToMessageId?: string;
   }) {
     const body = await apiFetch<{ message: Message }>(
       "/api/messages",
@@ -158,6 +345,7 @@ export default function ChannelView({
         body: JSON.stringify({
           channel_id: channel.id,
           text,
+          reply_to_message_id: replyToMessageId,
           ...(attachment ?? {})
         })
       },
@@ -188,8 +376,16 @@ export default function ChannelView({
         loading={loading}
         error={error}
         currentUserTgId={currentUser.tg_id}
+        onReply={setReplyingTo}
+        onToggleReaction={toggleReaction}
+        onMessagesVisible={markMessagesRead}
       />
-      <MessageInput channelId={channel.id} onSend={sendMessage} />
+      <MessageInput
+        channelId={channel.id}
+        replyTo={replyingTo}
+        onSend={sendMessage}
+        onCancelReply={() => setReplyingTo(null)}
+      />
     </section>
   );
 }

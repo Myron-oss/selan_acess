@@ -44,6 +44,28 @@ export interface AccessRequest {
 
 export type MessageFileType = "image" | "video" | "document";
 
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  reactor_tg_id: number;
+  emoji: string;
+  created_at: string;
+}
+
+export interface MessageRead {
+  id: string;
+  message_id: string;
+  reader_tg_id: number;
+  reader_name: string;
+  read_at: string;
+}
+
+export interface MessageReplyPreview {
+  id: string;
+  sender_name: string;
+  text: string;
+}
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -55,6 +77,10 @@ export interface Message {
   file_type: MessageFileType | null;
   file_name: string | null;
   file_size: number | null;
+  reply_to_message_id: string | null;
+  reply_to: MessageReplyPreview | null;
+  reactions: MessageReaction[];
+  reads: MessageRead[];
   created_at: string;
 }
 
