@@ -17,6 +17,7 @@ import {
   mapPinnedMessage
 } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { PINNED_MESSAGE_SELECT } from "@/lib/messageFeatures";
 import { notifyChannelMembers } from "@/lib/telegramNotifications";
 import type {
   MessageFileType,
@@ -29,8 +30,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 const MESSAGE_PAGE_SIZE = 50;
-const PINNED_MESSAGE_SELECT =
-  "id,channel_id,sender_name,text,file_name,is_pinned,pinned_at,pinned_by_tg_id,created_at";
 
 function getRelatedRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendTelegramBotMessage } from "@/lib/telegramBot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,22 +25,7 @@ async function sendTelegramMessage(chatId: number, text: string) {
     throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   }
 
-  const response = await fetch(
-    `https://api.telegram.org/bot${botToken}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text
-      }),
-      cache: "no-store"
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Telegram sendMessage failed with ${response.status}`);
-  }
+  await sendTelegramBotMessage(botToken, { chatId, text });
 }
 
 function isStartCommand(text: string | undefined): boolean {
@@ -58,7 +44,7 @@ export async function POST(request: Request) {
       request.headers.get("x-telegram-bot-api-secret-token") !== webhookSecret
     ) {
       return NextResponse.json(
-        { ok: false, error: "Недействительная подпись вебхука." },
+        { error: "Недействительная подпись вебхука." },
         { status: 401 }
       );
     }
@@ -226,7 +212,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Failed to process Telegram webhook", error);
     return NextResponse.json(
-      { ok: false, error: "Не удалось обработать обновление Telegram." },
+      { error: "Не удалось обработать обновление Telegram." },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendTelegramBotMessage } from "@/lib/telegramBot";
 import type { MessageFileType } from "@/lib/types";
 
 const TELEGRAM_BATCH_SIZE = 25;
@@ -16,12 +17,6 @@ interface NewMessageNotification {
   fileName: string | null;
   createdAt: string;
   appOrigin: string;
-}
-
-interface TelegramApiResponse {
-  ok?: boolean;
-  description?: string;
-  error_code?: number;
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -65,45 +60,6 @@ function getChannelUrl(appOrigin: string, channelId: string): string {
   const url = new URL(appOrigin);
   url.searchParams.set("channel", channelId);
   return url.toString();
-}
-
-async function sendTelegramMessage(
-  botToken: string,
-  recipientTgId: string,
-  text: string,
-  channelUrl: string
-): Promise<void> {
-  const response = await fetch(
-    `https://api.telegram.org/bot${botToken}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: recipientTgId,
-        text,
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "Открыть чат",
-                web_app: { url: channelUrl }
-              }
-            ]
-          ]
-        }
-      }),
-      cache: "no-store"
-    }
-  );
-  const result = (await response.json().catch(() => ({}))) as TelegramApiResponse;
-
-  if (!response.ok || !result.ok) {
-    throw new Error(
-      `Telegram ${result.error_code ?? response.status}: ${
-        result.description ?? response.statusText ?? "unknown error"
-      }`
-    );
-  }
 }
 
 export async function notifyChannelMembers(
@@ -173,11 +129,22 @@ export async function notifyChannelMembers(
     const batch = recipientIds.slice(index, index + TELEGRAM_BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map((recipientTgId) =>
-        sendTelegramMessage(
+        sendTelegramBotMessage(
           botToken,
-          recipientTgId,
-          notificationText,
-          channelUrl
+          {
+            chatId: recipientTgId,
+            text: notificationText,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "Открыть чат",
+                    web_app: { url: channelUrl }
+                  }
+                ]
+              ]
+            }
+          }
         )
       )
     );

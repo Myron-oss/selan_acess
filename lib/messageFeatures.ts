@@ -15,6 +15,8 @@ export type MessageReactionEmoji =
 
 export const MESSAGE_REACTION_EVENT = "message_reaction";
 export const MESSAGE_READS_EVENT = "message_reads";
+export const PINNED_MESSAGE_SELECT =
+  "id,channel_id,sender_name,text,file_name,is_pinned,pinned_at,pinned_by_tg_id,created_at";
 
 export function getMessageChannelTopic(channelId: string) {
   return `channel:${channelId}`;

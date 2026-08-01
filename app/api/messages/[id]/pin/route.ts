@@ -3,14 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/apiAuth";
 import { canAccessChannel } from "@/lib/channelService";
 import { mapPinnedMessage } from "@/lib/entityMappers";
+import { PINNED_MESSAGE_SELECT } from "@/lib/messageFeatures";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const PINNED_MESSAGE_SELECT =
-  "id,channel_id,sender_name,text,file_name,is_pinned,pinned_at,pinned_by_tg_id,created_at";
 
 interface RouteContext {
   params: { id: string };
