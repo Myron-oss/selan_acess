@@ -6,6 +6,7 @@ import type {
   MessageReaction,
   MessageRead,
   MessageReplyPreview,
+  PinnedMessage,
   Role
 } from "@/lib/types";
 
@@ -105,8 +106,35 @@ export function mapMessage(
         ? row.reply_to_message_id
         : null,
     reply_to: replyTo,
+    is_pinned: Boolean(row.is_pinned),
+    pinned_at: typeof row.pinned_at === "string" ? row.pinned_at : null,
+    pinned_by_tg_id:
+      typeof row.pinned_by_tg_id === "number"
+        ? row.pinned_by_tg_id
+        : typeof row.pinned_by_tg_id === "string"
+          ? Number(row.pinned_by_tg_id)
+          : null,
     reactions,
     reads,
+    created_at: String(row.created_at)
+  };
+}
+
+export function mapPinnedMessage(row: DataRow): PinnedMessage {
+  return {
+    id: String(row.id),
+    channel_id: String(row.channel_id),
+    sender_name: String(row.sender_name),
+    text: String(row.text),
+    file_name: typeof row.file_name === "string" ? row.file_name : null,
+    is_pinned: Boolean(row.is_pinned),
+    pinned_at: typeof row.pinned_at === "string" ? row.pinned_at : null,
+    pinned_by_tg_id:
+      typeof row.pinned_by_tg_id === "number"
+        ? row.pinned_by_tg_id
+        : typeof row.pinned_by_tg_id === "string"
+          ? Number(row.pinned_by_tg_id)
+          : null,
     created_at: String(row.created_at)
   };
 }

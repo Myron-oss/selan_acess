@@ -1,14 +1,14 @@
 "use client";
 
 import { memo } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Archive,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
-  Reply
+  Pin
 } from "lucide-react";
 
 import Avatar from "@/components/Avatar";
@@ -26,19 +26,17 @@ interface MessageRowProps {
   currentUserTgId: number;
   startsGroup: boolean;
   endsGroup: boolean;
-  reactionPanelOpen: boolean;
   pendingReactionEmoji: MessageReactionEmoji | null;
   highlighted: boolean;
   reduceMotion: boolean;
   setElement: (messageId: string, element: HTMLDivElement | null) => void;
   onStartLongPress: (messageId: string) => void;
   onCancelLongPress: () => void;
-  onOpenReactionPanel: (messageId: string) => void;
+  onOpenContextMenu: (messageId: string) => void;
   onToggleReaction: (
     messageId: string,
     emoji: MessageReactionEmoji
   ) => void;
-  onReply: (message: Message) => void;
   onScrollToMessage: (messageId: string) => void;
   onOpenImage: (url: string, name: string) => void;
   onReadDetails: (message: Message) => void;
@@ -181,16 +179,14 @@ function MessageRowComponent({
   currentUserTgId,
   startsGroup,
   endsGroup,
-  reactionPanelOpen,
   pendingReactionEmoji,
   highlighted,
   reduceMotion,
   setElement,
   onStartLongPress,
   onCancelLongPress,
-  onOpenReactionPanel,
+  onOpenContextMenu,
   onToggleReaction,
-  onReply,
   onScrollToMessage,
   onOpenImage,
   onReadDetails
@@ -228,44 +224,6 @@ function MessageRowComponent({
           isOwn ? "items-end" : "items-start"
         }`}
       >
-        <AnimatePresence>
-          {reactionPanelOpen && (
-            <motion.div
-              className={`absolute bottom-full z-40 mb-2 flex max-w-[min(94vw,430px)] items-center gap-0.5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-xl ${
-                isOwn ? "right-0" : "left-0"
-              }`}
-              initial={{ opacity: 0, y: 8, scale: 0.94 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.96 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
-            >
-              {MESSAGE_REACTION_EMOJIS.map((emoji) => (
-                <motion.button
-                  key={emoji}
-                  type="button"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xl hover:bg-[var(--surface-muted)] disabled:opacity-45"
-                  onClick={() => onToggleReaction(message.id, emoji)}
-                  disabled={pendingReactionEmoji === emoji}
-                  whileTap={{ scale: 0.82 }}
-                  aria-label={`Реакция ${emoji}`}
-                >
-                  {emoji}
-                </motion.button>
-              ))}
-              <span className="mx-1 h-7 w-px bg-[var(--border)]" />
-              <motion.button
-                type="button"
-                className="flex h-9 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--surface-muted)]"
-                onClick={() => onReply(message)}
-                whileTap={{ scale: 0.92 }}
-              >
-                <Reply size={16} />
-                Ответить
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         <motion.article
           initial={
             reduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }
@@ -282,7 +240,7 @@ function MessageRowComponent({
           onContextMenu={(event) => {
             event.preventDefault();
             onCancelLongPress();
-            onOpenReactionPanel(message.id);
+            onOpenContextMenu(message.id);
           }}
           className={`w-full px-2.5 py-2 shadow-sm select-none ${
             isOwn
@@ -351,10 +309,11 @@ function MessageRowComponent({
             </p>
           )}
           <div
-            className={`mt-0.5 px-1 text-right text-[10px] ${
+            className={`mt-0.5 flex items-center justify-end gap-1 px-1 text-right text-[10px] ${
               isOwn ? "text-white/70" : "muted-text"
             }`}
           >
+            {message.is_pinned && <Pin size={10} aria-label="Закреплено" />}
             {dateFormatter.format(new Date(message.created_at))}
           </div>
         </motion.article>

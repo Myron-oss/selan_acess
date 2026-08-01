@@ -12,7 +12,8 @@ import {
   mapMessage,
   mapMessageReaction,
   mapMessageRead,
-  mapMessageReplyPreview
+  mapMessageReplyPreview,
+  mapPinnedMessage
 } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type {
@@ -25,6 +26,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MESSAGE_PAGE_SIZE = 50;
+const PINNED_MESSAGE_SELECT =
+  "id,channel_id,sender_name,text,file_name,is_pinned,pinned_at,pinned_by_tg_id,created_at";
 
 function getRelatedRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -96,7 +99,7 @@ export async function GET(request: NextRequest) {
     let messagesQuery = supabase
       .from("messages")
       .select(
-        `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,created_at,
+        `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,created_at,
         reactions:message_reactions!message_reactions_message_id_fkey(id,message_id,reactor_tg_id,emoji,created_at),
         reads:message_reads!message_reads_message_id_fkey(id,message_id,reader_tg_id,reader_name,read_at),
         reply_to:messages!reply_to_message_id(id,sender_name,text)`
@@ -110,16 +113,31 @@ export async function GET(request: NextRequest) {
       messagesQuery = messagesQuery.lt("created_at", beforeAt);
     }
 
+    const pinnedMessageQuery = beforeAt
+      ? Promise.resolve({ data: null, error: null })
+      : supabase
+          .from("messages")
+          .select(PINNED_MESSAGE_SELECT)
+          .eq("channel_id", channelId)
+          .eq("is_pinned", true)
+          .order("pinned_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
     const queryStartedAt = performance.now();
-    const [messagesResult, avatarEntries] = await Promise.all([
+    const [messagesResult, avatarEntries, pinnedMessageResult] = await Promise.all([
       messagesQuery,
-      getCachedEmployeeAvatars()
+      getCachedEmployeeAvatars(),
+      pinnedMessageQuery
     ]);
     const queryFinishedAt = performance.now();
     const { data, error } = messagesResult;
 
     if (error) {
       throw error;
+    }
+    if (pinnedMessageResult.error) {
+      throw pinnedMessageResult.error;
     }
 
     const hasMore = (data?.length ?? 0) > MESSAGE_PAGE_SIZE;
@@ -159,7 +177,7 @@ export async function GET(request: NextRequest) {
       channel_id: channelId,
       count: messages.length,
       has_more: hasMore,
-      data_api_round_trips: 2,
+      data_api_round_trips: beforeAt ? 2 : 3,
       ...Object.fromEntries(
         Object.entries(durations).map(([key, value]) => [
           key,
@@ -171,6 +189,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         messages,
+        pinned_message: pinnedMessageResult.data
+          ? mapPinnedMessage(
+              pinnedMessageResult.data as Record<string, unknown>
+            )
+          : null,
         has_more: hasMore,
         next_cursor:
           hasMore && oldestMessage
@@ -186,7 +209,7 @@ export async function GET(request: NextRequest) {
             `data;dur=${durations.data_ms.toFixed(1)}`,
             `total;dur=${durations.total_ms.toFixed(1)}`
           ].join(", "),
-          "X-Data-API-Round-Trips": "2"
+          "X-Data-API-Round-Trips": beforeAt ? "2" : "3"
         }
       }
     );
@@ -331,7 +354,7 @@ export async function POST(request: NextRequest) {
         reply_to_message_id: replyToMessageId || null
       })
       .select(
-        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,created_at"
+        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,created_at"
       )
       .single();
 

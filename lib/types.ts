@@ -66,6 +66,18 @@ export interface MessageReplyPreview {
   text: string;
 }
 
+export interface PinnedMessage {
+  id: string;
+  channel_id: string;
+  sender_name: string;
+  text: string;
+  file_name: string | null;
+  is_pinned: boolean;
+  pinned_at: string | null;
+  pinned_by_tg_id: number | null;
+  created_at: string;
+}
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -79,6 +91,9 @@ export interface Message {
   file_size: number | null;
   reply_to_message_id: string | null;
   reply_to: MessageReplyPreview | null;
+  is_pinned: boolean;
+  pinned_at: string | null;
+  pinned_by_tg_id: number | null;
   reactions: MessageReaction[];
   reads: MessageRead[];
   created_at: string;

@@ -348,6 +348,7 @@ export default function HomePage() {
             ) : activeChannel ? (
               <ChannelView
                 channel={activeChannel}
+                isAdmin={isAdmin}
                 currentUser={{
                   tg_id: currentUser.tg_id,
                   avatar_url: currentUser.avatar_url

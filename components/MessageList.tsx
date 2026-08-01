@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X } from "lucide-react";
+import { Copy, Eye, Pin, Reply, X } from "lucide-react";
 
 import MessageRow from "@/components/MessageRow";
 import { getErrorMessage } from "@/lib/errors";
-import type { MessageReactionEmoji } from "@/lib/messageFeatures";
+import {
+  MESSAGE_REACTION_EMOJIS,
+  type MessageReactionEmoji
+} from "@/lib/messageFeatures";
 import type { Message } from "@/lib/types";
 
 interface MessageListProps {
@@ -16,11 +19,13 @@ interface MessageListProps {
   loadingOlder: boolean;
   error: string;
   currentUserTgId: number;
+  isAdmin: boolean;
   onReply: (message: Message) => void;
   onToggleReaction: (
     messageId: string,
     emoji: MessageReactionEmoji
   ) => Promise<void>;
+  onTogglePin: (messageId: string) => Promise<void>;
   onMessagesVisible: (messageIds: string[]) => void | Promise<void>;
   onLoadOlder: () => void | Promise<void>;
 }
@@ -39,8 +44,10 @@ export default function MessageList({
   loadingOlder,
   error,
   currentUserTgId,
+  isAdmin,
   onReply,
   onToggleReaction,
+  onTogglePin,
   onMessagesVisible,
   onLoadOlder
 }: MessageListProps) {
@@ -54,7 +61,7 @@ export default function MessageList({
     null
   );
   const reduceMotion = useReducedMotion();
-  const [reactionTargetId, setReactionTargetId] = useState<string | null>(
+  const [contextTargetId, setContextTargetId] = useState<string | null>(
     null
   );
   const [pendingReaction, setPendingReaction] = useState("");
@@ -141,7 +148,7 @@ export default function MessageList({
     }
     longPressTimerRef.current = setTimeout(() => {
       setInteractionError("");
-      setReactionTargetId(messageId);
+      setContextTargetId(messageId);
       window.navigator.vibrate?.(20);
     }, 450);
   }, []);
@@ -158,9 +165,9 @@ export default function MessageList({
       const pendingKey = `${messageId}:${emoji}`;
       setPendingReaction(pendingKey);
       setInteractionError("");
+      setContextTargetId(null);
       try {
         await onToggleReaction(messageId, emoji);
-        setReactionTargetId(null);
       } catch (caughtError) {
         setInteractionError(
           getErrorMessage(caughtError, "Не удалось изменить реакцию.")
@@ -173,7 +180,7 @@ export default function MessageList({
   );
 
   const replyTo = useCallback((message: Message) => {
-    setReactionTargetId(null);
+    setContextTargetId(null);
     onReply(message);
   }, [onReply]);
 
@@ -208,14 +215,74 @@ export default function MessageList({
     []
   );
 
-  const openReactionPanel = useCallback((messageId: string) => {
+  const openContextMenu = useCallback((messageId: string) => {
     setInteractionError("");
-    setReactionTargetId(messageId);
+    setContextTargetId(messageId);
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextTargetId(null);
+  }, []);
+
+  const copyMessageText = useCallback(async (message: Message) => {
+    setContextTargetId(null);
+    if (!message.text) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(message.text);
+    } catch (caughtError) {
+      setInteractionError(
+        getErrorMessage(caughtError, "Не удалось скопировать текст.")
+      );
+    }
+  }, []);
+
+  const togglePin = useCallback(
+    async (message: Message) => {
+      setContextTargetId(null);
+      setInteractionError("");
+      try {
+        await onTogglePin(message.id);
+      } catch (caughtError) {
+        setInteractionError(
+          getErrorMessage(
+            caughtError,
+            "Не удалось изменить закреплённое сообщение."
+          )
+        );
+      }
+    },
+    [onTogglePin]
+  );
+
+  const openReadDetails = useCallback((message: Message) => {
+    setContextTargetId(null);
+    setReadDetailsMessage(message);
   }, []);
 
   const openImage = useCallback((url: string, name: string) => {
     setOpenedImage({ url, name });
   }, []);
+
+  const contextMessage = contextTargetId
+    ? messages.find((message) => message.id === contextTargetId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (!contextTargetId) {
+      return;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [closeContextMenu, contextTargetId]);
 
   if (loading) {
     return (
@@ -306,7 +373,6 @@ export default function MessageList({
                 endsGroup={
                   !next || next.sender_tg_id !== message.sender_tg_id
                 }
-                reactionPanelOpen={reactionTargetId === message.id}
                 pendingReactionEmoji={
                   pendingReaction.startsWith(pendingPrefix)
                     ? (pendingReaction.slice(
@@ -319,9 +385,8 @@ export default function MessageList({
                 setElement={setMessageElement}
                 onStartLongPress={startLongPress}
                 onCancelLongPress={cancelLongPress}
-                onOpenReactionPanel={openReactionPanel}
+                onOpenContextMenu={openContextMenu}
                 onToggleReaction={toggleReaction}
-                onReply={replyTo}
                 onScrollToMessage={scrollToMessage}
                 onOpenImage={openImage}
                 onReadDetails={setReadDetailsMessage}
@@ -331,6 +396,98 @@ export default function MessageList({
         </AnimatePresence>
         <div ref={endRef} className="h-1" />
       </div>
+
+      <AnimatePresence>
+        {contextMessage && (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-end bg-black/35 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeContextMenu}
+          >
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-label="Действия с сообщением"
+              className="mx-auto w-full max-w-md overflow-hidden rounded-[1.65rem] border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+              initial={{ y: 80, opacity: 0, scale: 0.98 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 70, opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="px-2 pb-2 pt-2.5">
+                <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
+                <div className="flex items-center justify-between gap-0.5 overflow-x-auto">
+                  {MESSAGE_REACTION_EMOJIS.map((emoji) => (
+                    <motion.button
+                      key={emoji}
+                      type="button"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[1.35rem] hover:bg-[var(--surface-muted)] disabled:opacity-45"
+                      onClick={() =>
+                        void toggleReaction(contextMessage.id, emoji)
+                      }
+                      disabled={
+                        pendingReaction === `${contextMessage.id}:${emoji}`
+                      }
+                      whileTap={{ scale: 0.82 }}
+                      aria-label={`Реакция ${emoji}`}
+                    >
+                      {emoji}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--border)] p-2">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-[var(--surface-muted)] dark:text-slate-100"
+                  onClick={() => replyTo(contextMessage)}
+                >
+                  <Reply size={19} className="text-[var(--accent)]" />
+                  Ответить
+                </button>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-[var(--surface-muted)] dark:text-slate-100"
+                    onClick={() => void togglePin(contextMessage)}
+                  >
+                    <Pin size={19} className="text-[var(--accent)]" />
+                    {contextMessage.is_pinned ? "Открепить" : "Закрепить"}
+                  </button>
+                )}
+
+                {contextMessage.text && (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-[var(--surface-muted)] dark:text-slate-100"
+                    onClick={() => void copyMessageText(contextMessage)}
+                  >
+                    <Copy size={19} className="text-[var(--accent)]" />
+                    Копировать текст
+                  </button>
+                )}
+
+                {contextMessage.sender_tg_id === currentUserTgId &&
+                  contextMessage.reads.length > 0 && (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-800 hover:bg-[var(--surface-muted)] dark:text-slate-100"
+                      onClick={() => openReadDetails(contextMessage)}
+                    >
+                      <Eye size={19} className="text-[var(--accent)]" />
+                      Кто прочитал
+                    </button>
+                  )}
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {openedImage && (
