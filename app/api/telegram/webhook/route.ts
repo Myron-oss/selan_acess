@@ -19,13 +19,70 @@ interface TelegramUpdate {
   };
 }
 
-async function sendTelegramMessage(chatId: number, text: string) {
+interface TelegramReplyMarkup extends Record<string, unknown> {
+  inline_keyboard: Array<
+    Array<{
+      text: string;
+      web_app: { url: string };
+    }>
+  >;
+}
+
+async function sendTelegramMessage(
+  chatId: number,
+  text: string,
+  replyMarkup?: TelegramReplyMarkup
+) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) {
     throw new Error("TELEGRAM_BOT_TOKEN is not configured");
   }
 
-  await sendTelegramBotMessage(botToken, { chatId, text });
+  await sendTelegramBotMessage(botToken, {
+    chatId,
+    text,
+    replyMarkup
+  });
+}
+
+async function notifyAdministrators(fullName: string, username: string | null) {
+  const supabase = getSupabaseAdmin();
+  const { data: administrators, error } = await supabase
+    .from("employees")
+    .select("tg_id,roles!inner(is_admin)")
+    .eq("roles.is_admin", true);
+
+  if (error) {
+    throw error;
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "");
+  const replyMarkup = appUrl
+    ? {
+        inline_keyboard: [
+          [
+            {
+              text: "Открыть заявки",
+              web_app: { url: `${appUrl}?section=admin` }
+            }
+          ]
+        ]
+      }
+    : undefined;
+  const usernameLine = username ? `\nTelegram: @${username}` : "";
+  const text = `📋 Новая заявка на доступ\n${fullName}${usernameLine}`;
+
+  const results = await Promise.allSettled(
+    (administrators ?? []).map((administrator) =>
+      sendTelegramMessage(Number(administrator.tg_id), text, replyMarkup)
+    )
+  );
+
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error("Failed to notify an administrator", result.reason);
+    }
+  }
 }
 
 function isStartCommand(text: string | undefined): boolean {
@@ -192,6 +249,14 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true });
       }
       throw saveRequestError;
+    }
+
+    try {
+      await notifyAdministrators(fullName, username || null);
+    } catch (notificationError) {
+      // Заявка уже сохранена: сбой Telegram не должен приводить к повторной
+      // доставке webhook и повторной обработке анкеты.
+      console.error("Failed to notify administrators", notificationError);
     }
 
     const { error: cleanupError } = await supabase

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Pin, X } from "lucide-react";
+import { ArrowLeft, Pin, X } from "lucide-react";
 
 import MessageInput from "@/components/MessageInput";
 import MessageList from "@/components/MessageList";
@@ -26,6 +26,8 @@ import type {
   MessageAttachment,
   MessageReaction,
   MessageRead,
+  Poll,
+  PollDraft,
   PinnedMessage
 } from "@/lib/types";
 
@@ -36,6 +38,8 @@ interface ChannelViewProps {
     tg_id: number;
     avatar_url: string | null;
   };
+  onBack: () => void;
+  onChannelActivity: () => void | Promise<void>;
 }
 
 interface MessagePageResponse {
@@ -61,23 +65,15 @@ function insertMessageChronologically(
   if (messages.some((message) => message.id === newMessage.id)) {
     return messages;
   }
-
   const lastMessage = messages.at(-1);
-  if (!lastMessage || lastMessage.created_at <= newMessage.created_at) {
-    return [...messages, newMessage];
-  }
-
+  if (!lastMessage || lastMessage.created_at <= newMessage.created_at) return [...messages, newMessage];
   let low = 0;
   let high = messages.length;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
-    if (messages[middle].created_at <= newMessage.created_at) {
-      low = middle + 1;
-    } else {
-      high = middle;
-    }
+    if (messages[middle].created_at <= newMessage.created_at) low = middle + 1;
+    else high = middle;
   }
-
   return [...messages.slice(0, low), newMessage, ...messages.slice(low)];
 }
 
@@ -117,7 +113,9 @@ function getPinnedPreview(message: PinnedMessage): string {
 export default function ChannelView({
   channel,
   isAdmin,
-  currentUser
+  currentUser,
+  onBack,
+  onChannelActivity
 }: ChannelViewProps) {
   const cachedPageRef = useRef(messagePageCache.get(channel.id));
   const [messages, setMessages] = useState<Message[]>(
@@ -239,6 +237,28 @@ export default function ChannelView({
     );
   }, []);
 
+  const updatePoll = useCallback((poll: Poll) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.poll_id === poll.id ? { ...message, poll } : message
+      )
+    );
+  }, []);
+
+  const loadPoll = useCallback(async (pollId: string) => {
+    try {
+      const body = await apiFetch<{ poll: Poll }>(
+        `/api/polls/${pollId}`,
+        { cache: "no-store" },
+        "Не удалось обновить опрос."
+      );
+      updatePoll(body.poll);
+      return body.poll;
+    } catch {
+      return null;
+    }
+  }, [updatePoll]);
+
   useEffect(() => {
     let cancelled = false;
     const supabase = getSupabaseClient();
@@ -258,14 +278,7 @@ export default function ChannelView({
 
         if (!cancelled) {
           avatarBySenderRef.current.clear();
-          for (const message of body.messages) {
-            if (message.sender_avatar_url) {
-              avatarBySenderRef.current.set(
-                message.sender_tg_id,
-                message.sender_avatar_url
-              );
-            }
-          }
+          for (const message of body.messages) if (message.sender_avatar_url) avatarBySenderRef.current.set(message.sender_tg_id, message.sender_avatar_url);
           setMessages(body.messages);
           setPinnedMessage(body.pinned_message);
           pinnedMessageRef.current = body.pinned_message;
@@ -273,15 +286,9 @@ export default function ChannelView({
           setNextCursor(body.next_cursor?.before_at ?? null);
         }
       } catch (caughtError) {
-        if (!cancelled) {
-          setError(
-            getErrorMessage(caughtError, "Не удалось загрузить сообщения.")
-          );
-        }
+        if (!cancelled) setError(getErrorMessage(caughtError, "Не удалось загрузить сообщения."));
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -298,9 +305,38 @@ export default function ChannelView({
           filter: `channel_id=eq.${channel.id}`
         },
         (payload) => {
-          addMessage(
-            mapMessage(payload.new as Record<string, unknown>, null)
+          const message = mapMessage(
+            payload.new as Record<string, unknown>,
+            null
           );
+          if (message.poll_id) {
+            void apiFetch<{ poll: Poll }>(
+              `/api/polls/${message.poll_id}`,
+              { cache: "no-store" },
+              "Не удалось загрузить опрос."
+            )
+              .then((body) => addMessage({ ...message, poll: body.poll }))
+              .catch(() => addMessage(message));
+          } else {
+            addMessage(message);
+          }
+          void onChannelActivity();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `channel_id=eq.${channel.id}`
+        },
+        (payload) => {
+          const pollId =
+            typeof payload.new.poll_id === "string"
+              ? payload.new.poll_id
+              : null;
+          if (pollId) void loadPoll(pollId);
         }
       )
       .on(
@@ -309,17 +345,12 @@ export default function ChannelView({
         ({ payload }) => {
           if (payload.action === "delete") {
             const removedId = String(payload.reaction_id ?? "");
-            if (removedId) {
-              removeReaction(removedId);
-            }
+            if (removedId) removeReaction(removedId);
             return;
           }
-
           if (payload.reaction && typeof payload.reaction === "object") {
             upsertReaction(
-              mapMessageReaction(
-                payload.reaction as Record<string, unknown>
-              )
+              mapMessageReaction(payload.reaction as Record<string, unknown>)
             );
           }
         }
@@ -328,15 +359,10 @@ export default function ChannelView({
         "broadcast",
         { event: MESSAGE_READS_EVENT },
         ({ payload }) => {
-          if (!Array.isArray(payload.reads)) {
-            return;
-          }
-
+          if (!Array.isArray(payload.reads)) return;
           for (const read of payload.reads) {
             if (read && typeof read === "object") {
-              upsertRead(
-                mapMessageRead(read as Record<string, unknown>)
-              );
+              upsertRead(mapMessageRead(read as Record<string, unknown>));
             }
           }
         }
@@ -350,6 +376,8 @@ export default function ChannelView({
   }, [
     addMessage,
     channel.id,
+    loadPoll,
+    onChannelActivity,
     removeReaction,
     upsertReaction,
     upsertRead
@@ -582,27 +610,36 @@ export default function ChannelView({
       );
 
       addMessage(body.message);
+      await onChannelActivity();
     },
-    [addMessage, channel.id]
+    [addMessage, channel.id, onChannelActivity]
   );
 
   const cancelReply = useCallback(() => setReplyingTo(null), []);
 
+  const createPoll = useCallback(
+    async (draft: PollDraft) => {
+      const body = await apiFetch<{ message: Message }>(
+        "/api/polls",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel_id: channel.id, ...draft })
+        },
+        "Не удалось создать опрос."
+      );
+      addMessage(body.message);
+      await onChannelActivity();
+    },
+    [addMessage, channel.id, onChannelActivity]
+  );
+
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label={channel.name}>
-      <div className="z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3 shadow-sm">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xl dark:bg-[var(--accent-dark-soft)]">
-          {channel.emoji ?? "💬"}
-        </div>
-        <div className="min-w-0">
-          <h2 className="truncate text-[16px] font-bold text-slate-900 dark:text-slate-50">
-            {channel.name}
-          </h2>
-          <p className="text-xs muted-text">
-            {channel.participant_count}{" "}
-            {channel.participant_count === 1 ? "участник" : "участников"}
-          </p>
-        </div>
+      <div className="z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-3 shadow-sm">
+        <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[var(--surface-muted)] md:hidden" onClick={onBack} aria-label="Назад к списку веток"><ArrowLeft size={22} /></button>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xl dark:bg-[var(--accent-dark-soft)]">{channel.emoji ?? "💬"}</div>
+        <div className="min-w-0"><h2 className="truncate text-[16px] font-bold text-slate-900 dark:text-slate-50">{channel.name}</h2><p className="text-xs muted-text">{channel.participant_count} участников</p></div>
       </div>
       <AnimatePresence initial={false}>
         {pinnedMessage && (
@@ -643,11 +680,13 @@ export default function ChannelView({
         onTogglePin={togglePin}
         onMessagesVisible={markMessagesRead}
         onLoadOlder={loadOlderMessages}
+        onPollUpdated={updatePoll}
       />
       <MessageInput
         channelId={channel.id}
         replyTo={replyingTo}
         onSend={sendMessage}
+        onCreatePoll={createPoll}
         onCancelReply={cancelReply}
       />
 

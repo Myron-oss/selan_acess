@@ -6,11 +6,12 @@ import { motion } from "framer-motion";
 import Avatar from "@/components/Avatar";
 import { apiFetch } from "@/lib/apiClient";
 import { getErrorMessage } from "@/lib/errors";
-import type { Employee, Role } from "@/lib/types";
+import type { AdminChannel, Employee, Role } from "@/lib/types";
 
 interface EmployeeTableProps {
   employees: Employee[];
   roles: Role[];
+  channels: AdminChannel[];
   currentUserTgId: number | null;
   onUpdated: (employee: Employee) => void;
   onDeleted: (employeeId: string) => void;
@@ -19,6 +20,7 @@ interface EmployeeTableProps {
 interface EmployeeRowProps {
   employee: Employee;
   roles: Role[];
+  channels: AdminChannel[];
   currentUserTgId: number | null;
   onUpdated: (employee: Employee) => void;
   onDeleted: (employeeId: string) => void;
@@ -27,12 +29,14 @@ interface EmployeeRowProps {
 function EmployeeRow({
   employee,
   roles,
+  channels,
   currentUserTgId,
   onUpdated,
   onDeleted
 }: EmployeeRowProps) {
   const [fullName, setFullName] = useState(employee.full_name);
   const [roleId, setRoleId] = useState(employee.role_id);
+  const [channelIds, setChannelIds] = useState(employee.channel_ids);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const isCurrentUser = employee.tg_id === currentUserTgId;
@@ -42,6 +46,7 @@ function EmployeeRow({
   useEffect(() => {
     setFullName(employee.full_name);
     setRoleId(employee.role_id);
+    setChannelIds(employee.channel_ids);
   }, [employee]);
 
   async function save() {
@@ -59,7 +64,7 @@ function EmployeeRow({
         "Не удалось сохранить изменения."
       );
 
-      onUpdated(body.employee);
+      onUpdated({ ...body.employee, channel_ids: employee.channel_ids });
     } catch (caughtError) {
       setError(
         getErrorMessage(caughtError, "Не удалось сохранить изменения.")
@@ -67,6 +72,35 @@ function EmployeeRow({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveChannelAccess() {
+    setSaving(true);
+    setError("");
+    try {
+      const body = await apiFetch<{ channel_ids: string[] }>(
+        `/api/admin/employees/${employee.id}/channels`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel_ids: channelIds })
+        },
+        "Не удалось сохранить доступ к веткам."
+      );
+      onUpdated({ ...employee, channel_ids: body.channel_ids });
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Не удалось сохранить доступ к веткам."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleChannel(channelId: string) {
+    setChannelIds((current) =>
+      current.includes(channelId)
+        ? current.filter((id) => id !== channelId)
+        : [...current, channelId]
+    );
   }
 
   async function remove() {
@@ -123,6 +157,26 @@ function EmployeeRow({
           <p className="text-xs muted-text">{employee.role?.name}</p>
         </div>
       </div>
+
+      <fieldset className="mt-4" disabled={saving}>
+        <legend className="mb-2 text-xs font-medium muted-text">Доступ к веткам</legend>
+        {channels.length === 0 ? (
+          <p className="text-xs muted-text">Ветки ещё не созданы.</p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {channels.map((channel) => (
+              <label key={channel.id} className="flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
+                <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={channelIds.includes(channel.id)} onChange={() => toggleChannel(channel.id)} />
+                <span aria-hidden="true">{channel.emoji ?? "💬"}</span>
+                <span className="truncate">{channel.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <motion.button type="button" className="secondary-button mt-2 w-full" onClick={() => void saveChannelAccess()} disabled={saving} whileTap={{ scale: 0.95 }}>
+          Сохранить доступ к веткам
+        </motion.button>
+      </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1 block text-xs font-medium muted-text">
@@ -200,6 +254,7 @@ function EmployeeRow({
 export default function EmployeeTable({
   employees,
   roles,
+  channels,
   currentUserTgId,
   onUpdated,
   onDeleted
@@ -219,6 +274,7 @@ export default function EmployeeTable({
           key={employee.id}
           employee={employee}
           roles={roles}
+          channels={channels}
           currentUserTgId={currentUserTgId}
           onUpdated={onUpdated}
           onDeleted={onDeleted}

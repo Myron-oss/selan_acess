@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getCachedChannelsForRole } from "@/lib/cachedReferenceData";
+import { getEmployeeChannels } from "@/lib/channelService";
 import { getEmployeeContext } from "@/lib/supabaseAdmin";
 import {
   createSessionToken,
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const channels = await getCachedChannelsForRole(employee.role_id);
+    const channels = await getEmployeeChannels(employee.tg_id);
     const sessionToken = createSessionToken(employee.tg_id, sessionSecret);
     const response = NextResponse.json({
       employee: {

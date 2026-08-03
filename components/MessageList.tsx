@@ -10,7 +10,7 @@ import {
   MESSAGE_REACTION_EMOJIS,
   type MessageReactionEmoji
 } from "@/lib/messageFeatures";
-import type { Message } from "@/lib/types";
+import type { Message, Poll } from "@/lib/types";
 
 interface MessageListProps {
   messages: Message[];
@@ -28,6 +28,7 @@ interface MessageListProps {
   onTogglePin: (messageId: string) => Promise<void>;
   onMessagesVisible: (messageIds: string[]) => void | Promise<void>;
   onLoadOlder: () => void | Promise<void>;
+  onPollUpdated: (poll: Poll) => void;
 }
 
 const readDateFormatter = new Intl.DateTimeFormat("ru-RU", {
@@ -49,7 +50,8 @@ export default function MessageList({
   onToggleReaction,
   onTogglePin,
   onMessagesVisible,
-  onLoadOlder
+  onLoadOlder,
+  onPollUpdated
 }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -390,6 +392,7 @@ export default function MessageList({
                 onScrollToMessage={scrollToMessage}
                 onOpenImage={openImage}
                 onReadDetails={setReadDetailsMessage}
+                onPollUpdated={onPollUpdated}
               />
             );
           })}

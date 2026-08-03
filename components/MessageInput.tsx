@@ -11,6 +11,7 @@ import {
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  BarChart3,
   Camera,
   FileText,
   Image as ImageIcon,
@@ -20,6 +21,7 @@ import {
   X
 } from "lucide-react";
 
+import PollComposer from "@/components/PollComposer";
 import {
   CHAT_ATTACHMENTS_BUCKET,
   formatFileSize,
@@ -32,7 +34,8 @@ import { getSupabaseClient } from "@/lib/supabaseClient";
 import type {
   Message,
   MessageAttachment,
-  MessageFileType
+  MessageFileType,
+  PollDraft
 } from "@/lib/types";
 
 interface OutgoingMessage {
@@ -46,6 +49,7 @@ interface MessageInputProps {
   replyTo: Message | null;
   onSend: (message: OutgoingMessage) => Promise<void>;
   onCancelReply: () => void;
+  onCreatePoll: (draft: PollDraft) => Promise<void>;
 }
 
 interface AuthorizedUpload {
@@ -69,7 +73,8 @@ function MessageInputComponent({
   channelId,
   replyTo,
   onSend,
-  onCancelReply
+  onCancelReply,
+  onCreatePoll
 }: MessageInputProps) {
   const [text, setText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -78,6 +83,8 @@ function MessageInputComponent({
     useState<MessageAttachment | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pollSubmitting, setPollSubmitting] = useState(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [error, setError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -245,6 +252,19 @@ function MessageInputComponent({
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
     selectFile(event.target.files?.[0]);
+  }
+
+  async function createPoll(draft: PollDraft) {
+    setPollSubmitting(true);
+    setError("");
+    try {
+      await onCreatePoll(draft);
+      setPollOpen(false);
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Не удалось создать опрос."));
+    } finally {
+      setPollSubmitting(false);
+    }
   }
 
   return (
@@ -483,6 +503,15 @@ function MessageInputComponent({
                 subtitle="Снять фото на телефон"
                 onClick={() => cameraInputRef.current?.click()}
               />
+              <AttachmentOption
+                icon={<BarChart3 size={22} />}
+                title="Опрос"
+                subtitle="Вопрос с вариантами ответа"
+                onClick={() => {
+                  setSheetOpen(false);
+                  setPollOpen(true);
+                }}
+              />
               <motion.button
                 type="button"
                 className="mt-1 w-full rounded-xl px-4 py-3 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--surface-muted)]"
@@ -493,6 +522,16 @@ function MessageInputComponent({
               </motion.button>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pollOpen && (
+          <PollComposer
+            submitting={pollSubmitting}
+            onClose={() => !pollSubmitting && setPollOpen(false)}
+            onSubmit={createPoll}
+          />
         )}
       </AnimatePresence>
     </>

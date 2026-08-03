@@ -3,9 +3,10 @@ import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
 import { CHANNELS_CACHE_TAG } from "@/lib/cachedReferenceData";
+import { channelsExist } from "@/lib/channelService";
 import { mapEmployee, mapRole } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { isUuid } from "@/lib/validation";
+import { isUuid, parseUniqueUuidArray } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,35 +29,49 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return authorization.response;
     }
 
-    const body = (await request.json()) as { role_id?: unknown };
-    const roleId = typeof body.role_id === "string" ? body.role_id : "";
-    if (!isUuid(roleId)) {
+    const body = (await request.json()) as {
+      is_admin?: unknown;
+      channel_ids?: unknown;
+    };
+    if (typeof body.is_admin !== "boolean") {
       return NextResponse.json(
-        { error: "Выберите корректную роль." },
+        { error: "Укажите тип доступа сотрудника." },
+        { status: 400 }
+      );
+    }
+    const channelIds = parseUniqueUuidArray(body.channel_ids);
+    if (!channelIds || !(await channelsExist(channelIds))) {
+      return NextResponse.json(
+        { error: "Список содержит неизвестную ветку." },
         { status: 400 }
       );
     }
 
     const supabase = getSupabaseAdmin();
-    const { data: role, error: roleError } = await supabase
+    const { data: roleRows, error: roleError } = await supabase
       .from("roles")
       .select("id,name,is_admin")
-      .eq("id", roleId)
-      .maybeSingle();
+      .eq("is_admin", body.is_admin)
+      .order("name", { ascending: true });
 
     if (roleError) {
       throw roleError;
     }
+    const role = body.is_admin
+      ? roleRows?.[0]
+      : roleRows?.find((row) => row.name === "Сотрудник") ?? roleRows?.[0];
     if (!role) {
       return NextResponse.json(
-        { error: "Выбранная роль не существует." },
+        { error: "Подходящая роль не настроена." },
         { status: 400 }
       );
     }
+    const roleId = String(role.id);
 
     const { data, error } = await supabase.rpc("approve_access_request", {
       p_request_id: params.id,
-      p_role_id: roleId
+      p_role_id: roleId,
+      p_channel_ids: channelIds
     });
 
     if (error) {
@@ -87,7 +102,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const employee = mapEmployee(
-      row as Record<string, unknown>,
+      { ...(row as Record<string, unknown>), channel_ids: channelIds },
       mapRole(role as Record<string, unknown>)
     );
 

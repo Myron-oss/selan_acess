@@ -16,6 +16,7 @@ import {
   mapMessageReplyPreview,
   mapPinnedMessage
 } from "@/lib/entityMappers";
+import { loadPollsById } from "@/lib/pollService";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { PINNED_MESSAGE_SELECT } from "@/lib/messageFeatures";
 import { notifyChannelMembers } from "@/lib/telegramNotifications";
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
     const authFinishedAt = performance.now();
 
     const accessStartedAt = performance.now();
-    if (!(await canAccessChannel(channelId, employee.role_id))) {
+    if (!(await canAccessChannel(channelId, employee.tg_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
         { status: 403, headers: { "Cache-Control": "no-store" } }
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
     let messagesQuery = supabase
       .from("messages")
       .select(
-        `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,created_at,
+        `id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,poll_id,created_at,updated_at,
         reactions:message_reactions!message_reactions_message_id_fkey(id,message_id,reactor_tg_id,emoji,created_at),
         reads:message_reads!message_reads_message_id_fkey(id,message_id,reader_tg_id,reader_name,read_at),
         reply_to:messages!reply_to_message_id(id,sender_name,text)`
@@ -146,7 +147,7 @@ export async function GET(request: NextRequest) {
     const pageRows = (data ?? []).slice(0, MESSAGE_PAGE_SIZE);
     const recentMessages = [...pageRows].reverse();
     const avatarBySender = new Map(avatarEntries);
-    const messages = recentMessages.map((message) => {
+    const mappedMessages = recentMessages.map((message) => {
       const row = message as Record<string, unknown>;
       const reactions = getRelatedRows(row.reactions)
         .map(mapMessageReaction)
@@ -166,6 +167,16 @@ export async function GET(request: NextRequest) {
         replyRow ? mapMessageReplyPreview(replyRow) : null
       );
     });
+    const polls = await loadPollsById(
+      mappedMessages
+        .map((message) => message.poll_id)
+        .filter((pollId): pollId is string => Boolean(pollId)),
+      employee.tg_id
+    );
+    const messages = mappedMessages.map((message) => ({
+      ...message,
+      poll: message.poll_id ? polls.get(message.poll_id) ?? null : null
+    }));
     const oldestMessage = recentMessages[0];
     const finishedAt = performance.now();
     const durations = {
@@ -311,7 +322,7 @@ export async function POST(request: NextRequest) {
     }
     const { employee } = authorization;
 
-    if (!(await canAccessChannel(channelId, employee.role_id))) {
+    if (!(await canAccessChannel(channelId, employee.tg_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
         { status: 403 }
@@ -356,7 +367,7 @@ export async function POST(request: NextRequest) {
         reply_to_message_id: replyToMessageId || null
       })
       .select(
-        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,created_at"
+        "id,channel_id,sender_tg_id,sender_name,text,file_url,file_type,file_name,file_size,reply_to_message_id,is_pinned,pinned_at,pinned_by_tg_id,poll_id,created_at,updated_at"
       )
       .single();
 

@@ -6,10 +6,8 @@ import {
   CHANNELS_CACHE_TAG,
   getCachedAdminChannels
 } from "@/lib/cachedReferenceData";
-import { rolesExist } from "@/lib/channelService";
 import { mapAdminChannel } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { parseUniqueUuidArray } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,11 +47,9 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       name?: unknown;
       emoji?: unknown;
-      allowed_role_ids?: unknown;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const emoji = typeof body.emoji === "string" ? body.emoji.trim() : "";
-    const roleIds = parseUniqueUuidArray(body.allowed_role_ids);
 
     if (!name || name.length > 100) {
       return NextResponse.json(
@@ -67,21 +63,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (!roleIds || !(await rolesExist(roleIds))) {
-      return NextResponse.json(
-        { error: "Список ролей содержит неизвестную роль." },
-        { status: 400 }
-      );
-    }
-
     const { data, error } = await getSupabaseAdmin()
       .from("channels")
       .insert({
         name,
-        emoji: emoji || null,
-        allowed_role_ids: roleIds
+        emoji: emoji || null
       })
-      .select("id,name,emoji,allowed_role_ids")
+      .select("id,name,emoji")
       .single();
 
     if (error) {

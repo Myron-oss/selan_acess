@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireEmployee } from "@/lib/apiAuth";
-import { getCachedChannelsForRole } from "@/lib/cachedReferenceData";
+import { getEmployeeChannels } from "@/lib/channelService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,10 +13,10 @@ export async function GET(request: NextRequest) {
       authorization.response.headers.set("Cache-Control", "no-store");
       return authorization.response;
     }
-    const channels = await getCachedChannelsForRole(
-      authorization.employee.role_id
-    );
 
+    const channels = await getEmployeeChannels(
+      authorization.employee.tg_id
+    );
     return NextResponse.json(
       { channels },
       { headers: { "Cache-Control": "no-store" } }

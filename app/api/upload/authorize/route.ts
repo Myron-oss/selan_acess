@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
     const { employee } = authorization;
 
-    if (!(await canAccessChannel(channelId, employee.role_id))) {
+    if (!(await canAccessChannel(channelId, employee.tg_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
         { status: 403 }

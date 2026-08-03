@@ -3,10 +3,9 @@ import { revalidateTag } from "next/cache";
 
 import { requireAdmin } from "@/lib/apiAuth";
 import { CHANNELS_CACHE_TAG } from "@/lib/cachedReferenceData";
-import { rolesExist } from "@/lib/channelService";
 import { mapAdminChannel } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { isUuid, parseUniqueUuidArray } from "@/lib/validation";
+import { isUuid } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,12 +31,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const body = (await request.json()) as {
       name?: unknown;
       emoji?: unknown;
-      allowed_role_ids?: unknown;
     };
     const updates: {
       name?: string;
       emoji?: string | null;
-      allowed_role_ids?: string[];
     } = {};
 
     if (body.name !== undefined) {
@@ -62,17 +59,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       updates.emoji = emoji || null;
     }
 
-    if (body.allowed_role_ids !== undefined) {
-      const roleIds = parseUniqueUuidArray(body.allowed_role_ids);
-      if (!roleIds || !(await rolesExist(roleIds))) {
-        return NextResponse.json(
-          { error: "Список ролей содержит неизвестную роль." },
-          { status: 400 }
-        );
-      }
-      updates.allowed_role_ids = roleIds;
-    }
-
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "Нет данных для изменения ветки." },
@@ -84,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .from("channels")
       .update(updates)
       .eq("id", params.id)
-      .select("id,name,emoji,allowed_role_ids")
+      .select("id,name,emoji")
       .maybeSingle();
 
     if (error) {

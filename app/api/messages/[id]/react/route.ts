@@ -60,12 +60,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
     const channelId = String(message.channel_id);
 
-    if (
-      !(await canAccessChannel(
-        channelId,
-        authorization.employee.role_id
-      ))
-    ) {
+    if (!(await canAccessChannel(channelId, authorization.employee.tg_id))) {
       return NextResponse.json(
         { error: "Нет доступа к этой ветке." },
         { status: 403, headers: { "Cache-Control": "no-store" } }

@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { mapAdminChannel, mapRole } from "@/lib/entityMappers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import type { AdminChannel, Channel, Role } from "@/lib/types";
+import type { AdminChannel, Role } from "@/lib/types";
 
 export const CHANNELS_CACHE_TAG = "channels";
 export const EMPLOYEE_AVATARS_CACHE_TAG = "employee-avatars";
@@ -51,7 +51,7 @@ export const getCachedAdminChannels = unstable_cache(
   async (): Promise<AdminChannel[]> => {
     const { data, error } = await getSupabaseAdmin()
       .from("channels")
-      .select("id,name,emoji,allowed_role_ids")
+      .select("id,name,emoji")
       .order("name", { ascending: true });
 
     if (error) {
@@ -63,49 +63,5 @@ export const getCachedAdminChannels = unstable_cache(
     );
   },
   ["admin-channels"],
-  { revalidate: 30, tags: [CHANNELS_CACHE_TAG] }
-);
-
-export const getCachedChannelsForRole = unstable_cache(
-  async (roleId: string): Promise<Channel[]> => {
-    const supabase = getSupabaseAdmin();
-    const [channelsResult, employeeRolesResult] = await Promise.all([
-      supabase
-        .from("channels")
-        .select("id,name,emoji,allowed_role_ids")
-        .contains("allowed_role_ids", [roleId])
-        .order("name", { ascending: true }),
-      supabase.from("employees").select("role_id")
-    ]);
-
-    if (channelsResult.error) {
-      throw channelsResult.error;
-    }
-    if (employeeRolesResult.error) {
-      throw employeeRolesResult.error;
-    }
-
-    const employeesByRole = new Map<string, number>();
-    for (const row of employeeRolesResult.data ?? []) {
-      const employeeRoleId = String(row.role_id);
-      employeesByRole.set(
-        employeeRoleId,
-        (employeesByRole.get(employeeRoleId) ?? 0) + 1
-      );
-    }
-
-    return (channelsResult.data ?? []).map((channel) => ({
-      id: channel.id as string,
-      name: channel.name as string,
-      emoji: (channel.emoji as string | null) ?? null,
-      allowed_role_ids: (channel.allowed_role_ids as string[]) ?? [],
-      participant_count: ((channel.allowed_role_ids as string[]) ?? []).reduce(
-        (count, allowedRoleId) =>
-          count + (employeesByRole.get(allowedRoleId) ?? 0),
-        0
-      )
-    }));
-  },
-  ["channels-for-role"],
   { revalidate: 30, tags: [CHANNELS_CACHE_TAG] }
 );

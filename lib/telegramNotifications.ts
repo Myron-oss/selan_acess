@@ -74,7 +74,7 @@ export async function notifyChannelMembers(
   const supabase = getSupabaseAdmin();
   const { data: channel, error: channelError } = await supabase
     .from("channels")
-    .select("id,name,emoji,allowed_role_ids")
+    .select("id,name,emoji")
     .eq("id", notification.channelId)
     .maybeSingle();
 
@@ -88,19 +88,28 @@ export async function notifyChannelMembers(
     return;
   }
 
-  const allowedRoleIds = Array.isArray(channel.allowed_role_ids)
-    ? channel.allowed_role_ids.map(String)
-    : [];
-  if (allowedRoleIds.length === 0) {
+  const { data: accessRows, error: accessError } = await supabase
+    .from("employee_channel_access")
+    .select("employee_tg_id")
+    .eq("channel_id", notification.channelId)
+    .neq("employee_tg_id", String(notification.senderTgId));
+
+  if (accessError) {
+    throw accessError;
+  }
+
+  const memberTgIds = (accessRows ?? []).map((row) =>
+    String(row.employee_tg_id)
+  );
+  if (memberTgIds.length === 0) {
     return;
   }
 
   const { data: recipients, error: recipientsError } = await supabase
     .from("employees")
     .select("tg_id")
-    .in("role_id", allowedRoleIds)
+    .in("tg_id", memberTgIds)
     .eq("notifications_enabled", true)
-    .neq("tg_id", String(notification.senderTgId));
 
   if (recipientsError) {
     throw recipientsError;

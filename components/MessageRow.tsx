@@ -12,13 +12,14 @@ import {
 } from "lucide-react";
 
 import Avatar from "@/components/Avatar";
+import PollCard from "@/components/PollCard";
 import { formatFileSize, getFileExtension } from "@/lib/attachments";
 import {
   getReplyPreviewText,
   MESSAGE_REACTION_EMOJIS,
   type MessageReactionEmoji
 } from "@/lib/messageFeatures";
-import type { Message } from "@/lib/types";
+import type { Message, Poll } from "@/lib/types";
 
 interface MessageRowProps {
   message: Message;
@@ -40,6 +41,7 @@ interface MessageRowProps {
   onScrollToMessage: (messageId: string) => void;
   onOpenImage: (url: string, name: string) => void;
   onReadDetails: (message: Message) => void;
+  onPollUpdated: (poll: Poll) => void;
 }
 
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
@@ -189,7 +191,8 @@ function MessageRowComponent({
   onToggleReaction,
   onScrollToMessage,
   onOpenImage,
-  onReadDetails
+  onReadDetails,
+  onPollUpdated
 }: MessageRowProps) {
   const isOwn = message.sender_tg_id === currentUserTgId;
   const groupedReactions = getGroupedReactions(message, currentUserTgId);
@@ -299,7 +302,11 @@ function MessageRowComponent({
             onOpenImage={onOpenImage}
           />
 
-          {message.text && (
+          {message.poll && (
+            <PollCard poll={message.poll} onUpdated={onPollUpdated} />
+          )}
+
+          {message.text && !message.poll && (
             <p
               className={`whitespace-pre-wrap break-words px-1 text-[15px] leading-[1.35rem] ${
                 message.file_url ? "mt-1.5" : ""

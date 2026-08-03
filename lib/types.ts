@@ -14,6 +14,7 @@ export interface Employee {
   theme_preference: ThemePreference;
   accent_color: AccentColor;
   notifications_enabled: boolean;
+  channel_ids: string[];
   role?: Role;
 }
 
@@ -21,15 +22,15 @@ export interface Channel {
   id: string;
   name: string;
   emoji: string | null;
-  allowed_role_ids: string[];
   participant_count: number;
+  last_message_preview: string | null;
+  last_message_at: string | null;
 }
 
 export interface AdminChannel {
   id: string;
   name: string;
   emoji: string | null;
-  allowed_role_ids: string[];
 }
 
 export type AccessRequestStatus = "pending" | "approved" | "rejected";
@@ -97,7 +98,44 @@ export interface Message {
   pinned_by_tg_id: number | null;
   reactions: MessageReaction[];
   reads: MessageRead[];
+  poll_id: string | null;
+  poll: Poll | null;
   created_at: string;
+  updated_at: string;
+}
+
+export interface PollVoter {
+  tg_id: number;
+  full_name: string;
+}
+
+export interface PollOption {
+  id: string;
+  option_text: string;
+  position: number;
+  vote_count: number;
+  percentage: number;
+  selected_by_current_user: boolean;
+  voters: PollVoter[] | null;
+}
+
+export interface Poll {
+  id: string;
+  channel_id: string;
+  creator_tg_id: number;
+  question: string;
+  is_anonymous: boolean;
+  allows_multiple_answers: boolean;
+  total_votes: number;
+  options: PollOption[];
+  created_at: string;
+}
+
+export interface PollDraft {
+  question: string;
+  options: string[];
+  is_anonymous: boolean;
+  allows_multiple_answers: boolean;
 }
 
 export interface MessageAttachment {

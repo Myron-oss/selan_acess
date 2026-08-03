@@ -2,20 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft } from "lucide-react";
 import dynamic from "next/dynamic";
 
-import Avatar from "@/components/Avatar";
 import TabBar from "@/components/TabBar";
 import { apiFetch } from "@/lib/apiClient";
 import { getErrorMessage } from "@/lib/errors";
 import { getAccentOption } from "@/lib/preferences";
-import type {
-  AccentColor,
-  Channel,
-  Role,
-  ThemePreference,
-  UserSettings
-} from "@/lib/types";
+import type { AccentColor, Channel, Role, ThemePreference, UserSettings } from "@/lib/types";
 
 interface CurrentUser {
   tg_id: number;
@@ -32,26 +26,15 @@ interface AuthResponse {
   is_admin: boolean;
   channels: Channel[];
 }
-
 type ActiveTab = string | "admin" | "settings";
 
 function SectionLoading() {
-  return (
-    <div className="flex h-full items-center justify-center text-sm muted-text">
-      Загружаем раздел…
-    </div>
-  );
+  return <div className="flex h-full items-center justify-center text-sm muted-text">Загружаем раздел…</div>;
 }
 
-const AdminPanel = dynamic(() => import("@/components/AdminPanel"), {
-  loading: SectionLoading
-});
-const ChannelView = dynamic(() => import("@/components/ChannelView"), {
-  loading: SectionLoading
-});
-const SettingsPanel = dynamic(() => import("@/components/SettingsPanel"), {
-  loading: SectionLoading
-});
+const AdminPanel = dynamic(() => import("@/components/AdminPanel"), { loading: SectionLoading });
+const ChannelView = dynamic(() => import("@/components/ChannelView"), { loading: SectionLoading });
+const SettingsPanel = dynamic(() => import("@/components/SettingsPanel"), { loading: SectionLoading });
 
 export default function HomePage() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -59,20 +42,16 @@ export default function HomePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading"
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-
     async function initialize() {
       try {
         const { default: WebApp } = await import("@twa-dev/sdk");
         WebApp.ready();
         WebApp.expand();
-
         if (!WebApp.initData) {
           throw new Error("Откройте приложение через меню Telegram-бота.");
         }
@@ -94,18 +73,19 @@ export default function HomePage() {
         setCurrentUser(authBody.employee);
         setIsAdmin(authBody.is_admin);
         setChannels(authBody.channels);
-        const requestedChannelId = new URLSearchParams(
-          window.location.search
-        ).get("channel");
+        const params = new URLSearchParams(window.location.search);
+        const requestedSection = params.get("section");
+        const requestedChannelId = params.get("channel");
+        const desktop = window.matchMedia("(min-width: 768px)").matches;
         setActiveTab(
-          requestedChannelId &&
-            authBody.channels.some(
-              (channel) => channel.id === requestedChannelId
-            )
-            ? requestedChannelId
-            : authBody.channels[0]?.id ?? "settings"
+          requestedSection === "admin" && authBody.is_admin
+            ? "admin"
+            : requestedChannelId && authBody.channels.some((channel) => channel.id === requestedChannelId)
+              ? requestedChannelId
+              : desktop
+                ? authBody.channels[0]?.id ?? "settings"
+                : ""
         );
-
         setStatus("ready");
       } catch (caughtError) {
         if (!cancelled) {
@@ -114,141 +94,55 @@ export default function HomePage() {
         }
       }
     }
-
     void initialize();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const refreshPendingRequestCount = useCallback(async () => {
     try {
-      const body = await apiFetch<{ count: number }>(
-        "/api/admin/access-requests",
-        { cache: "no-store" },
-        "Не удалось обновить число заявок."
-      );
+      const body = await apiFetch<{ count: number }>("/api/admin/access-requests", { cache: "no-store" }, "Не удалось обновить число заявок.");
       setPendingRequestCount(Number(body.count) || 0);
-    } catch {
-      // Фоновое обновление не должно перекрывать основной интерфейс.
-    }
+    } catch { /* Фоновая проверка не должна перекрывать интерфейс. */ }
   }, []);
 
   useEffect(() => {
-    if (!isAdmin || status !== "ready") {
-      return;
-    }
-
+    if (!isAdmin || status !== "ready") return;
     const refresh = () => void refreshPendingRequestCount();
     refresh();
     const intervalId = window.setInterval(refresh, 30_000);
     window.addEventListener("focus", refresh);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refresh);
-    };
+    return () => { window.clearInterval(intervalId); window.removeEventListener("focus", refresh); };
   }, [isAdmin, refreshPendingRequestCount, status]);
 
   const refreshChannels = useCallback(async () => {
-    let body: { channels: Channel[] };
     try {
-      body = await apiFetch<{ channels: Channel[] }>(
-        "/api/channels",
-        { cache: "no-store" },
-        "Не удалось обновить ветки."
-      );
-    } catch {
-      return;
-    }
-
-    setChannels(body.channels);
-    setActiveTab((current) => {
-      if (current === "admin" || current === "settings") {
-        return current;
-      }
-
-      return body.channels.some((channel) => channel.id === current)
-        ? current
-        : body.channels[0]?.id ?? "settings";
-    });
+      const body = await apiFetch<{ channels: Channel[] }>("/api/channels", { cache: "no-store" }, "Не удалось обновить ветки.");
+      setChannels(body.channels);
+      setActiveTab((current) => {
+        if (current === "admin" || current === "settings" || current === "") return current;
+        if (body.channels.some((channel) => channel.id === current)) return current;
+        return window.matchMedia("(min-width: 768px)").matches ? body.channels[0]?.id ?? "settings" : "";
+      });
+    } catch { /* Сохраняем текущий экран при фоновом сбое. */ }
   }, []);
 
   useEffect(() => {
-    if (!currentUser) {
-      return;
-    }
-
+    if (!currentUser) return;
     const root = document.documentElement;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const accent = getAccentOption(currentUser.accent_color);
-
     root.style.setProperty("--accent", accent.color);
     root.style.setProperty("--accent-soft", accent.soft);
     root.style.setProperty("--accent-dark-soft", accent.darkSoft);
-
-    const syncTheme = () => {
-      const shouldUseDark =
-        currentUser.theme_preference === "dark" ||
-        (currentUser.theme_preference === "system" && media.matches);
-      root.classList.toggle("dark", shouldUseDark);
-    };
-
+    const syncTheme = () => root.classList.toggle("dark", currentUser.theme_preference === "dark" || (currentUser.theme_preference === "system" && media.matches));
     syncTheme();
     media.addEventListener("change", syncTheme);
-
-    return () => {
-      media.removeEventListener("change", syncTheme);
-    };
+    return () => media.removeEventListener("change", syncTheme);
   }, [currentUser]);
 
-  function updateSettings(settings: UserSettings) {
-    setCurrentUser((user) => (user ? { ...user, ...settings } : user));
-  }
-
-  if (status === "loading") {
-    return (
-      <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)] p-6">
-        <div className="text-center">
-          <motion.div
-            className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)] shadow-lg"
-            animate={{ scale: [1, 1.04, 1] }}
-            transition={{ duration: 1.4, repeat: Infinity }}
-          >
-            <span className="text-2xl" aria-hidden="true">
-              💬
-            </span>
-          </motion.div>
-          <p className="mt-4 text-sm muted-text">Проверяем доступ…</p>
-        </div>
-      </main>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)] p-5">
-        <motion.section
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="panel w-full max-w-md p-7 text-center"
-        >
-          <div className="text-4xl" aria-hidden="true">
-            🔒
-          </div>
-          <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">
-            Форум Селан
-          </h1>
-          <p className="mt-2 text-sm leading-6 muted-text">{error}</p>
-        </motion.section>
-      </main>
-    );
-  }
-
-  if (!currentUser) {
-    return null;
-  }
+  if (status === "loading") return <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)]"><div className="text-center"><motion.div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)] text-2xl shadow-lg" animate={{ scale: [1, 1.04, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>💬</motion.div><p className="mt-4 text-sm muted-text">Проверяем доступ…</p></div></main>;
+  if (status === "error") return <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)] p-5"><motion.section initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="panel w-full max-w-md p-7 text-center"><div className="text-4xl">🔒</div><h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">Форум Селан</h1><p className="mt-2 text-sm leading-6 muted-text">{error}</p></motion.section></main>;
+  if (!currentUser) return null;
 
   const activeChannel = channels.find((channel) => channel.id === activeTab);
   const settings: UserSettings = {
@@ -257,106 +151,21 @@ export default function HomePage() {
     avatar_url: currentUser.avatar_url,
     notifications_enabled: currentUser.notifications_enabled
   };
+  const hasDetail = Boolean(activeTab);
 
   return (
-    <main className="mx-auto flex h-[var(--app-height)] w-full max-w-3xl flex-col overflow-hidden bg-[var(--messenger-bg)] shadow-2xl shadow-slate-900/10">
-      <header className="z-20 shrink-0 border-b border-[var(--border)] bg-[var(--surface)] px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent)] text-lg text-white shadow-md shadow-slate-900/10">
-              💬
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-[17px] font-bold leading-tight text-slate-900 dark:text-slate-50">
-                Форум Селан
-              </h1>
-              <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs muted-text">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {currentUser.full_name}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActiveTab("settings")}
-            className="rounded-full outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            aria-label="Открыть настройки"
-          >
-            <Avatar
-              name={currentUser.full_name}
-              tgId={currentUser.tg_id}
-              url={currentUser.avatar_url}
-              size="md"
-            />
-          </button>
-        </div>
-      </header>
+    <main className="mx-auto flex h-[var(--app-height)] w-full max-w-6xl overflow-hidden bg-[var(--messenger-bg)] shadow-2xl shadow-slate-900/10">
+      <aside className={`${hasDetail ? "hidden" : "block"} h-full w-full shrink-0 border-r border-[var(--border)] md:block md:w-80 lg:w-96`}>
+        <TabBar channels={channels} activeTab={activeTab} isAdmin={isAdmin} pendingRequestCount={pendingRequestCount} onChange={setActiveTab} />
+      </aside>
 
-      <TabBar
-        channels={channels}
-        activeTab={activeTab}
-        isAdmin={isAdmin}
-        pendingRequestCount={pendingRequestCount}
-        onChange={setActiveTab}
-      />
-
-      <AnimatePresence>
-        {isAdmin && pendingRequestCount > 0 && activeTab !== "admin" && (
-          <motion.button
-            type="button"
-            className="fixed left-1/2 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-40 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-xl shadow-slate-900/15 dark:border-amber-800 dark:bg-amber-950"
-            initial={{ opacity: 0, y: -12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            onClick={() => setActiveTab("admin")}
-            whileTap={{ scale: 0.97 }}
-            aria-live="polite"
-          >
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-lg text-white"
-              aria-hidden="true"
-            >
-              📋
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-bold text-amber-950 dark:text-amber-50">
-                {pendingRequestCount === 1
-                  ? "Новая заявка на доступ"
-                  : `Новых заявок: ${pendingRequestCount}`}
-              </span>
-              <span className="mt-0.5 block text-xs text-amber-800 dark:text-amber-200">
-                Нажмите, чтобы открыть заявки сотрудников
-              </span>
-            </span>
-            <span className="text-amber-700 dark:text-amber-300" aria-hidden="true">
-              →
-            </span>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <section className={`${hasDetail ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -12 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute inset-0"
-          >
+          <motion.div key={activeTab || "empty"} className="h-full min-h-0" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.18 }}>
             {activeTab === "settings" ? (
-              <SettingsPanel
-                user={currentUser}
-                settings={settings}
-                onChange={updateSettings}
-              />
+              <MobileSection title="Настройки" onBack={() => setActiveTab("")}><SettingsPanel user={currentUser} settings={settings} onChange={(updated) => setCurrentUser((user) => user ? { ...user, ...updated } : user)} /></MobileSection>
             ) : activeTab === "admin" && isAdmin ? (
-              <AdminPanel
-                onPendingCountChange={setPendingRequestCount}
-                onChannelsChanged={refreshChannels}
-              />
+              <MobileSection title="Админка" onBack={() => setActiveTab("")}><AdminPanel onPendingCountChange={setPendingRequestCount} onChannelsChanged={refreshChannels} /></MobileSection>
             ) : activeChannel ? (
               <ChannelView
                 channel={activeChannel}
@@ -365,15 +174,27 @@ export default function HomePage() {
                   tg_id: currentUser.tg_id,
                   avatar_url: currentUser.avatar_url
                 }}
+                onBack={() => setActiveTab("")}
+                onChannelActivity={refreshChannels}
               />
             ) : (
-              <div className="flex h-full items-center justify-center p-6 text-center text-sm muted-text">
-                Для вашей роли пока нет доступных веток.
-              </div>
+              <div className="flex h-full items-center justify-center p-6 text-center text-sm muted-text">Выберите ветку слева.</div>
             )}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </section>
+
+      <AnimatePresence>
+        {isAdmin && pendingRequestCount > 0 && activeTab !== "admin" && (
+          <motion.button type="button" className="fixed left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-40 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-xl dark:border-amber-800 dark:bg-amber-950" initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} onClick={() => setActiveTab("admin")} whileTap={{ scale: 0.97 }}>
+            <span className="text-xl">📋</span><span className="flex-1 text-sm font-bold text-amber-950 dark:text-amber-50">Новых заявок: {pendingRequestCount}</span><span>→</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
     </main>
   );
+}
+
+function MobileSection({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) {
+  return <div className="flex h-full min-h-0 flex-col"><header className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-3 md:hidden"><button type="button" className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-[var(--surface-muted)]" onClick={onBack} aria-label="Назад"><ArrowLeft size={22} /></button><h2 className="font-bold text-slate-900 dark:text-slate-50">{title}</h2></header><div className="min-h-0 flex-1">{children}</div></div>;
 }

@@ -44,6 +44,9 @@ export function mapEmployee(row: DataRow, role?: Role): Employee {
         ? row.accent_color
         : "blue",
     notifications_enabled: row.notifications_enabled !== false,
+    channel_ids: Array.isArray(row.channel_ids)
+      ? row.channel_ids.map(String)
+      : [],
     role
   };
 }
@@ -52,10 +55,7 @@ export function mapAdminChannel(row: DataRow): AdminChannel {
   return {
     id: String(row.id),
     name: String(row.name),
-    emoji: typeof row.emoji === "string" ? row.emoji : null,
-    allowed_role_ids: Array.isArray(row.allowed_role_ids)
-      ? row.allowed_role_ids.map(String)
-      : []
+    emoji: typeof row.emoji === "string" ? row.emoji : null
   };
 }
 
@@ -117,7 +117,10 @@ export function mapMessage(
           : null,
     reactions,
     reads,
-    created_at: String(row.created_at)
+    poll_id: typeof row.poll_id === "string" ? row.poll_id : null,
+    poll: null,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at ?? row.created_at)
   };
 }
 
