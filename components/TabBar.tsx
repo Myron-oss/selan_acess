@@ -28,7 +28,7 @@ export default function TabBar({ channels, activeTab, isAdmin, pendingRequestCou
     <nav className="flex h-full min-h-0 flex-col bg-[var(--surface)]" aria-label="Разделы форума">
       <div className="border-b border-[var(--border)] px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">Ветки</p>
-        <h2 className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-50">Форум Селан</h2>
+        <h2 className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-50">СЕЛАН</h2>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">

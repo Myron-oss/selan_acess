@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
-  title: "Форум Селан",
-  description: "Корпоративный чат сотрудников Селан"
+  title: "СЕЛАН",
+  description: "Корпоративный чат сотрудников компании «СЕЛАН»"
 };
 
 export const viewport: Viewport = {

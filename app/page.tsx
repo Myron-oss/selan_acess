@@ -141,7 +141,7 @@ export default function HomePage() {
   }, [currentUser]);
 
   if (status === "loading") return <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)]"><div className="text-center"><motion.div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)] text-2xl shadow-lg" animate={{ scale: [1, 1.04, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>💬</motion.div><p className="mt-4 text-sm muted-text">Проверяем доступ…</p></div></main>;
-  if (status === "error") return <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)] p-5"><motion.section initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="panel w-full max-w-md p-7 text-center"><div className="text-4xl">🔒</div><h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">Форум Селан</h1><p className="mt-2 text-sm leading-6 muted-text">{error}</p></motion.section></main>;
+  if (status === "error") return <main className="flex min-h-[var(--app-height)] items-center justify-center bg-[var(--messenger-bg)] p-5"><motion.section initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="panel w-full max-w-md p-7 text-center"><div className="text-4xl">🔒</div><h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">СЕЛАН</h1><p className="mt-2 text-sm leading-6 muted-text">{error}</p></motion.section></main>;
   if (!currentUser) return null;
 
   const activeChannel = channels.find((channel) => channel.id === activeTab);
