@@ -79,7 +79,7 @@ TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN
 TELEGRAM_WEBHOOK_SECRET=RANDOM_WEBHOOK_SECRET
 NEXT_PUBLIC_APP_URL=https://YOUR_APP.vercel.app
 SESSION_SECRET=LONG_RANDOM_SECRET
-NEXT_PUBLIC_APP_URL=https://YOUR_DEPLOYMENT.vercel.app
+CRON_SECRET=ANOTHER_LONG_RANDOM_SECRET
 ```
 
 Для `SESSION_SECRET` используйте случайную строку не короче 32 байт, например:
@@ -88,9 +88,13 @@ NEXT_PUBLIC_APP_URL=https://YOUR_DEPLOYMENT.vercel.app
 openssl rand -hex 32
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` и
-`SESSION_SECRET` нельзя публиковать или добавлять в переменные с префиксом
-`NEXT_PUBLIC_`.
+`CRON_SECRET` рекомендуется задать в Vercel для подписи ежедневной проверки
+доступности базы. Cron `/api/cron/database-health` выполняет один минимальный
+запрос к Supabase в сутки, чтобы production-проект не считался неактивным.
+
+`SUPABASE_SERVICE_ROLE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+`SESSION_SECRET` и `CRON_SECRET` нельзя публиковать или добавлять в переменные
+с префиксом `NEXT_PUBLIC_`.
 Файл `.env.local` уже добавлен в `.gitignore`.
 
 `NEXT_PUBLIC_APP_URL` — публичный HTTPS-адрес Mini App. Он используется кнопкой
